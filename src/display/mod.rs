@@ -4,6 +4,7 @@ mod logo;
 
 use crate::{
     cli::{LogoAlign, Options},
+    config::Config,
     system::SystemInfo,
 };
 
@@ -75,10 +76,18 @@ fn render_line(line: &Line, theme: &Theme) -> String {
     }
 }
 
-pub fn render(info: &SystemInfo, options: &Options) {
-    let theme = Theme::auto(options.no_color);
+pub fn render(info: &SystemInfo, options: &Options, config: &Config) {
+    let theme = Theme::auto(options.no_color, &config.theme);
 
-    let logo_lines = logo::load(options.logo.as_deref(), options.no_logo);
+    // CLI logo overrides configured logo.
+    let configured_logo = config.logo_path();
+
+    let logo_path = options.logo.as_deref().or(configured_logo.as_deref());
+
+    // An explicit CLI logo can override enabled=false.
+    let no_logo = options.no_logo || (!config.logo.enabled && options.logo.is_none());
+
+    let logo_lines = logo::load(logo_path, no_logo);
     let info_lines = layout::build(info);
 
     let logo_width = logo_lines
@@ -91,7 +100,10 @@ pub fn render(info: &SystemInfo, options: &Options) {
     let info_height = info_lines.len();
     let total_lines = logo_height.max(info_height);
 
-    let logo_start = match options.logo_align {
+    // CLI alignment overrides configured alignment.
+    let alignment = options.logo_align.unwrap_or(config.logo.align);
+
+    let logo_start = match alignment {
         LogoAlign::Top => 0,
         LogoAlign::Center => total_lines.saturating_sub(logo_height) / 2,
         LogoAlign::Bottom => total_lines.saturating_sub(logo_height),
@@ -103,7 +115,7 @@ pub fn render(info: &SystemInfo, options: &Options) {
         let logo_index = row.checked_sub(logo_start);
 
         let raw_logo = logo_index
-            .and_then(|idx| logo_lines.get(idx))
+            .and_then(|index| logo_lines.get(index))
             .map(String::as_str)
             .unwrap_or("");
 
@@ -118,6 +130,7 @@ pub fn render(info: &SystemInfo, options: &Options) {
 
         if logo_width > 0 {
             let colored_logo = theme.paint(&left, Color::Logo);
+
             println!("{colored_logo}   {right}");
         } else {
             println!("{right}");

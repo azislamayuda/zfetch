@@ -1,10 +1,12 @@
+use serde::Deserialize;
 use std::{env, path::PathBuf};
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum LogoAlign {
+    Top,
     #[default]
     Center,
-    Top,
     Bottom,
 }
 
@@ -13,7 +15,8 @@ pub struct Options {
     pub no_color: bool,
     pub no_logo: bool,
     pub logo: Option<PathBuf>,
-    pub logo_align: LogoAlign,
+    pub logo_align: Option<LogoAlign>,
+    pub config: Option<PathBuf>,
 }
 
 pub enum Action {
@@ -23,11 +26,7 @@ pub enum Action {
 }
 
 pub fn parse() -> Result<Action, String> {
-    let mut options = Options {
-        logo_align: LogoAlign::Center,
-        ..Options::default()
-    };
-
+    let mut options = Options::default();
     let mut args = env::args().skip(1);
 
     while let Some(arg) = args.next() {
@@ -57,14 +56,24 @@ pub fn parse() -> Result<Action, String> {
             "--logo-align" => {
                 let value = args
                     .next()
-                    .ok_or_else(|| "--logo-align requires: top, center, or bottom".to_string())?;
+                    .ok_or_else(|| "--logo-align requires top, center or bottom".to_string())?;
 
-                options.logo_align = match value.as_str() {
+                options.logo_align = Some(match value.as_str() {
                     "top" => LogoAlign::Top,
                     "center" => LogoAlign::Center,
                     "bottom" => LogoAlign::Bottom,
-                    _ => return Err(format!("Invalid logo alignment: {value}")),
-                };
+                    _ => {
+                        return Err(format!("Invalid logo alignment: {value}"));
+                    }
+                });
+            }
+
+            "--config" => {
+                let value = args
+                    .next()
+                    .ok_or_else(|| "--config requires a file path".to_string())?;
+
+                options.config = Some(PathBuf::from(value));
             }
 
             _ => return Err(format!("Unknown argument: {arg}")),
@@ -85,10 +94,11 @@ pub fn print_help() {
     println!("Usage: zfetch [OPTIONS]");
     println!();
     println!("Options:");
-    println!("  -h, --help              Show this help message");
-    println!("  -V, --version           Show application version");
+    println!("  -h, --help              Show help");
+    println!("  -V, --version           Show version");
     println!("      --no-color          Disable ANSI colors");
-    println!("      --logo <FILE>       Load custom ASCII logo");
+    println!("      --logo <FILE>       Use custom ASCII logo");
     println!("      --no-logo           Hide ASCII logo");
-    println!("      --logo-align <POS>  top | center | bottom");
+    println!("      --logo-align <POS>  top, center or bottom");
+    println!("      --config <FILE>     Use custom config file");
 }

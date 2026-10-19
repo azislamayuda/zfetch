@@ -1,4 +1,5 @@
 mod cli;
+mod config;
 mod display;
 mod system;
 
@@ -23,8 +24,18 @@ fn main() -> ExitCode {
         }
 
         cli::Action::Run(options) => {
+            let config = match config::Config::load(options.config.as_deref()) {
+                Ok(config) => config,
+
+                Err(error) => {
+                    eprintln!("zfetch: {error}");
+                    return ExitCode::from(2);
+                }
+            };
+
             let info = system::collect();
-            display::render(&info, &options);
+
+            display::render(&info, &options, &config);
         }
     }
 

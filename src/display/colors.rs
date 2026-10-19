@@ -1,3 +1,5 @@
+use crate::config::ThemeConfig;
+
 use std::{
     env,
     io::{self, IsTerminal},
@@ -16,16 +18,21 @@ pub enum Color {
 
 pub struct Theme {
     enabled: bool,
+    logo_code: &'static str,
+    heading_code: &'static str,
 }
 
 impl Theme {
-    pub fn auto(no_color: bool) -> Self {
+    pub fn auto(no_color: bool, config: &ThemeConfig) -> Self {
         let terminal = io::stdout().is_terminal();
         let disabled_by_env = env::var_os("NO_COLOR").is_some();
         let dumb = env::var("TERM").is_ok_and(|term| term == "dumb");
 
         Self {
-            enabled: terminal && !no_color && !disabled_by_env && !dumb,
+            enabled: terminal && config.color && !no_color && !disabled_by_env && !dumb,
+
+            logo_code: config.logo_color.ansi(),
+            heading_code: config.heading_color.ansi(),
         }
     }
 
@@ -35,9 +42,8 @@ impl Theme {
         }
 
         let code = match color {
-            Color::Logo => "1;31",
-            Color::Title => "1;36",
-            Color::Section => "1;36",
+            Color::Logo => self.logo_code,
+            Color::Title | Color::Section => self.heading_code,
             Color::Label => "1;37",
             Color::Muted => "90",
             Color::Good => "32",
