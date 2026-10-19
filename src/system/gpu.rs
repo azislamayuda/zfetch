@@ -12,9 +12,7 @@ pub fn name() -> String {
                 || line.contains("3D controller")
                 || line.contains("Display controller");
 
-            if is_gpu
-                && let Some((_, description)) = line.split_once(": ")
-            {
+            if is_gpu && let Some((_, description)) = line.split_once(": ") {
                 return description.trim().to_string();
             }
         }
@@ -30,9 +28,7 @@ pub fn name() -> String {
                 continue;
             };
 
-            if number.is_empty()
-                || !number.chars().all(|c| c.is_ascii_digit())
-            {
+            if number.is_empty() || !number.chars().all(|c| c.is_ascii_digit()) {
                 continue;
             }
 
