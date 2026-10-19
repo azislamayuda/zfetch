@@ -33,7 +33,7 @@ fn main() -> ExitCode {
                 }
             };
 
-            let info = system::collect();
+            let info = system::collect(&config);
 
             display::render(&info, &options, &config);
         }
