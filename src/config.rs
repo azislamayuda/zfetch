@@ -1,7 +1,7 @@
 use crate::cli::LogoAlign;
-
 use serde::Deserialize;
 use std::{
+    collections::HashSet,
     env, fs, io,
     path::{Path, PathBuf},
 };
@@ -11,6 +11,8 @@ use std::{
 pub struct Config {
     pub logo: LogoConfig,
     pub theme: ThemeConfig,
+    pub display: DisplayConfig,
+    pub modules: ModulesConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -65,6 +67,8 @@ pub struct ThemeConfig {
     pub color: bool,
     pub logo_color: NamedColor,
     pub heading_color: NamedColor,
+    pub label_color: NamedColor,
+    pub value_color: NamedColor,
 }
 
 impl Default for ThemeConfig {
@@ -73,8 +77,79 @@ impl Default for ThemeConfig {
             color: true,
             logo_color: NamedColor::Red,
             heading_color: NamedColor::Cyan,
+            label_color: NamedColor::White,
+            value_color: NamedColor::Gray,
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct DisplayConfig {
+    pub show_efi: bool,
+    pub show_percentage: bool,
+}
+
+impl Default for DisplayConfig {
+    fn default() -> Self {
+        Self {
+            show_efi: false,
+            show_percentage: true,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ModulesConfig {
+    pub system: Vec<String>,
+    pub hardware: Vec<String>,
+}
+
+impl Default for ModulesConfig {
+    fn default() -> Self {
+        Self {
+            system: vec![
+                "os", "kernel", "arch", "shell", "de", "session", "wm", "terminal", "packages",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+
+            hardware: vec![
+                "host", "bios", "display", "cpu", "gpu", "memory", "swap", "disk", "local_ip",
+                "battery", "uptime",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        }
+    }
+}
+
+const SYSTEM_MODULES: &[&str] = &[
+    "os", "kernel", "arch", "shell", "de", "session", "wm", "terminal", "packages",
+];
+
+const HARDWARE_MODULES: &[&str] = &[
+    "host", "bios", "display", "cpu", "gpu", "memory", "swap", "disk", "local_ip", "battery",
+    "uptime",
+];
+
+fn validate_modules(group: &str, modules: &[String], supported: &[&str]) -> Result<(), String> {
+    let mut seen = HashSet::new();
+
+    for module in modules {
+        if !supported.contains(&module.as_str()) {
+            return Err(format!("Unknown module '{module}' in modules.{group}"));
+        }
+
+        if !seen.insert(module) {
+            return Err(format!("Duplicate module '{module}' in modules.{group}"));
+        }
+    }
+
+    Ok(())
 }
 
 fn default_config_path() -> Option<PathBuf> {
@@ -86,21 +161,34 @@ fn default_config_path() -> Option<PathBuf> {
 }
 
 impl Config {
+    pub fn validate(&self) -> Result<(), String> {
+        validate_modules("system", &self.modules.system, SYSTEM_MODULES)?;
+
+        validate_modules("hardware", &self.modules.hardware, HARDWARE_MODULES)?;
+
+        Ok(())
+    }
+
     pub fn load(explicit: Option<&Path>) -> Result<Self, String> {
         let Some(path) = explicit.map(Path::to_path_buf).or_else(default_config_path) else {
             return Ok(Self::default());
         };
 
-        match fs::read_to_string(&path) {
+        let config: Self = match fs::read_to_string(&path) {
             Ok(content) => json5::from_str(&content)
-                .map_err(|error| format!("Invalid config {}: {error}", path.display())),
+                .map_err(|error| format!("Invalid config {}: {error}", path.display()))?,
 
             Err(error) if error.kind() == io::ErrorKind::NotFound && explicit.is_none() => {
-                Ok(Self::default())
+                Self::default()
             }
 
-            Err(error) => Err(format!("Cannot read config {}: {error}", path.display())),
-        }
+            Err(error) => {
+                return Err(format!("Cannot read config {}: {error}", path.display()));
+            }
+        };
+
+        config.validate()?;
+        Ok(config)
     }
 
     pub fn logo_path(&self) -> Option<PathBuf> {
@@ -111,12 +199,7 @@ impl Config {
         }
 
         if let Some(relative) = source.strip_prefix("~/") {
-            return Some(
-                env::var_os("HOME")
-                    .map(PathBuf::from)
-                    .unwrap_or_default()
-                    .join(relative),
-            );
+            return env::var_os("HOME").map(|home| PathBuf::from(home).join(relative));
         }
 
         Some(PathBuf::from(source))
@@ -131,24 +214,30 @@ mod tests {
     fn parses_jsonc_with_comments() {
         let content = r#"
         {
-            // Logo configuration
+            // Custom logo
             "logo": {
-                "enabled": true,
                 "align": "bottom",
             },
             "theme": {
-                "color": false,
                 "logo_color": "magenta",
+                "value_color": "gray",
+            },
+            "display": {
+                "show_efi": true,
+            },
+            "modules": {
+                "system": ["os", "kernel"],
+                "hardware": ["cpu", "gpu"],
             },
         }
         "#;
 
         let config: Config = json5::from_str(content).unwrap();
 
-        assert!(config.logo.enabled);
+        config.validate().unwrap();
         assert!(matches!(config.logo.align, LogoAlign::Bottom));
-        assert!(!config.theme.color);
-        assert!(matches!(config.theme.logo_color, NamedColor::Magenta));
+        assert!(config.display.show_efi);
+        assert_eq!(config.modules.system[0], "os");
     }
 
     #[test]
@@ -158,6 +247,9 @@ mod tests {
         assert!(config.logo.enabled);
         assert!(matches!(config.logo.align, LogoAlign::Center));
         assert!(config.theme.color);
+        assert!(!config.display.show_efi);
+        assert!(config.display.show_percentage);
+        assert!(!config.modules.hardware.is_empty());
     }
 
     #[test]
@@ -165,5 +257,21 @@ mod tests {
         let result = json5::from_str::<Config>(r#"{"logo": {"align": "middle"}}"#);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_module() {
+        let mut config = Config::default();
+        config.modules.system.push("invalid".into());
+
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_module() {
+        let mut config = Config::default();
+        config.modules.hardware.push("cpu".into());
+
+        assert!(config.validate().is_err());
     }
 }

@@ -10,6 +10,7 @@ pub enum Color {
     Title,
     Section,
     Label,
+    Value,
     Muted,
     Good,
     Warning,
@@ -20,6 +21,8 @@ pub struct Theme {
     enabled: bool,
     logo_code: &'static str,
     heading_code: &'static str,
+    label_code: &'static str,
+    value_code: &'static str,
 }
 
 impl Theme {
@@ -33,6 +36,8 @@ impl Theme {
 
             logo_code: config.logo_color.ansi(),
             heading_code: config.heading_color.ansi(),
+            label_code: config.label_color.ansi(),
+            value_code: config.value_color.ansi(),
         }
     }
 
@@ -44,7 +49,8 @@ impl Theme {
         let code = match color {
             Color::Logo => self.logo_code,
             Color::Title | Color::Section => self.heading_code,
-            Color::Label => "1;37",
+            Color::Label => self.label_code,
+            Color::Value => self.value_code,
             Color::Muted => "90",
             Color::Good => "32",
             Color::Warning => "33",
