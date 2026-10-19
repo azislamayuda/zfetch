@@ -1,4 +1,11 @@
-use std::{env, fs, path::Path, process::Command};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
+
+// ============================================
+// DPKG DETECTION
+// ============================================
 
 fn count_dpkg() -> Option<usize> {
     let content = fs::read_to_string("/var/lib/dpkg/status").ok()?;
@@ -11,42 +18,116 @@ fn count_dpkg() -> Option<usize> {
     )
 }
 
-fn count_flatpak() -> Option<usize> {
-    let output = Command::new("flatpak")
-        .args(["list", "--columns=application"])
-        .output()
-        .ok()?;
+// ============================================
+// FILESYSTEM HELPERS
+// ============================================
 
-    if !output.status.success() {
+fn directories(path: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(path) else {
+        return Vec::new();
+    };
+
+    entries
+        .flatten()
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .map(|entry| entry.path())
+        .collect()
+}
+
+// ============================================
+// FLATPAK DETECTION
+// ============================================
+
+// Count installed apps and runtimes directly
+// from Flatpak installation directories.
+
+fn count_flatpak_at(root: &Path) -> usize {
+    // Applications with an active installation.
+    let apps = directories(&root.join("app"))
+        .into_iter()
+        .filter(|app| app.join("current").exists())
+        .count();
+
+    // Installed runtime branches.
+    let runtimes = directories(&root.join("runtime"))
+        .into_iter()
+        .filter(|runtime| {
+            let name = runtime
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
+
+            let suffix = name.rsplit('.').next().unwrap_or("");
+
+            suffix != "Locale" && suffix != "Debug"
+        })
+        .map(|runtime| {
+            directories(&runtime)
+                .into_iter()
+                .map(|arch| directories(&arch).len())
+                .sum::<usize>()
+        })
+        .sum::<usize>();
+
+    apps + runtimes
+}
+
+fn count_flatpak() -> Option<usize> {
+    let system_path = Path::new("/var/lib/flatpak");
+
+    let user_path =
+        env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share/flatpak"));
+
+    let system_exists = system_path.is_dir();
+
+    let user_exists = user_path.as_ref().is_some_and(|path| path.is_dir());
+
+    if !system_exists && !user_exists {
         return None;
     }
 
-    let text = String::from_utf8_lossy(&output.stdout);
+    let mut total = count_flatpak_at(system_path);
 
-    Some(text.lines().filter(|s| !s.trim().is_empty()).count())
+    if let Some(path) = user_path {
+        total += count_flatpak_at(&path);
+    }
+
+    Some(total)
 }
+
+// ============================================
+// SNAP DETECTION
+// ============================================
 
 fn count_snap() -> Option<usize> {
-    let output = Command::new("snap").arg("list").output().ok()?;
+    let snap_path = Path::new("/snap");
+    let snapd_path = Path::new("/var/lib/snapd/snap");
 
-    if !output.status.success() {
+    if !snap_path.is_dir() && !snapd_path.is_dir() {
         return None;
     }
 
-    let text = String::from_utf8_lossy(&output.stdout);
+    let mut count = directories(snap_path).len();
 
-    Some(
-        text.lines()
-            .skip(1)
-            .filter(|s| !s.trim().is_empty())
-            .count(),
-    )
+    if count == 0 {
+        count = directories(snapd_path).len();
+    }
+
+    // Match Fastfetch counting, excluding
+    // the Snap bin directory.
+    Some(count.saturating_sub(1))
 }
 
-fn count_in_directory(path: &Path) -> Option<usize> {
-    let entries = fs::read_dir(path).ok()?;
+// ============================================
+// APPIMAGE DETECTION
+// ============================================
 
-    let count = entries
+fn count_appimages_at(path: &Path) -> usize {
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+
+    entries
         .flatten()
         .filter(|entry| {
             let path = entry.path();
@@ -54,59 +135,82 @@ fn count_in_directory(path: &Path) -> Option<usize> {
             path.is_file()
                 && path
                     .extension()
-                    .and_then(|s| s.to_str())
+                    .and_then(|ext| ext.to_str())
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("appimage"))
         })
-        .count();
-
-    Some(count)
+        .count()
 }
 
 fn count_appimage() -> Option<usize> {
     let home = env::var_os("HOME")?;
-    let home = Path::new(&home);
+    let home = PathBuf::from(home);
 
-    let mut total = 0;
-    let mut found = false;
+    let locations = [home.join("Applications"), home.join("AppImages")];
 
-    for folder in ["Applications", "AppImages"] {
-        if let Some(count) = count_in_directory(&home.join(folder)) {
-            total += count;
-            found = true;
-        }
+    let found = locations.iter().any(|path| path.is_dir());
+
+    if !found {
+        return None;
     }
 
-    if found { Some(total) } else { None }
+    Some(locations.iter().map(|path| count_appimages_at(path)).sum())
 }
 
+// ============================================
+// PACKAGE SUMMARY
+// ============================================
+
 pub fn summary() -> String {
-    let mut packages = Vec::new();
+    let mut result = Vec::new();
 
     if let Some(count) = count_appimage()
         && count > 0
     {
-        packages.push(format!("{count} (appimage)"));
+        result.push(format!("{count} (appimage)"));
     }
 
     if let Some(count) = count_dpkg() {
-        packages.push(format!("{count} (dpkg)"));
+        result.push(format!("{count} (dpkg)"));
     }
 
     if let Some(count) = count_flatpak()
         && count > 0
     {
-        packages.push(format!("{count} (flatpak)"));
+        result.push(format!("{count} (flatpak)"));
     }
 
     if let Some(count) = count_snap()
         && count > 0
     {
-        packages.push(format!("{count} (snap)"));
+        result.push(format!("{count} (snap)"));
     }
 
-    if packages.is_empty() {
+    if result.is_empty() {
         "Unknown".to_string()
     } else {
-        packages.join(", ")
+        result.join(", ")
+    }
+}
+
+// ============================================
+// UNIT TESTS
+// ============================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nonexistent_directory_is_empty() {
+        let path = Path::new("/nonexistent-zfetch-package-test-directory");
+
+        assert!(directories(path).is_empty());
+    }
+
+    #[test]
+    fn missing_flatpak_directory_is_zero() {
+        let path = Path::new("/nonexistent-zfetch-flatpak-test-directory");
+
+        assert_eq!(count_flatpak_at(path), 0);
     }
 }
