@@ -21,11 +21,28 @@ pub fn render(info: &SystemInfo) {
 
     println!("{:<10} {}", "Host", info.host);
     println!("{:<10} {}", "BIOS", info.bios);
+    if info.displays.is_empty() {
+        println!("{:<10} Unknown", "Display");
+    } else {
+        for (index, display) in info.displays.iter().enumerate() {
+            let label = if index == 0 { "Display" } else { "" };
+
+            println!("{label:<10} {display}");
+        }
+    }
     println!("{:<10} {}", "CPU", info.cpu);
     println!("{:<10} {}", "GPU", info.gpu);
     println!("{:<10} {}", "Memory", info.memory);
     println!("{:<10} {}", "Swap", info.swap);
-    println!("{:<10} {}", "Disk", info.disk);
+    if info.disks.is_empty() {
+        println!("{:<10} Unknown", "Disk");
+    } else {
+        for (index, disk) in info.disks.iter().enumerate() {
+            let label = if index == 0 { "Disk" } else { "" };
+
+            println!("{label:<10} {}", disk.formatted());
+        }
+    }
     println!("{:<10} {}", "Local IP", info.local_ip);
 
     if let Some(battery) = &info.battery {

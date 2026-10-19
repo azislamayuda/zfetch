@@ -3,6 +3,7 @@ pub mod bios;
 pub mod cpu;
 pub mod desktop;
 pub mod disk;
+pub mod display;
 pub mod gpu;
 pub mod host;
 pub mod memory;
@@ -33,7 +34,8 @@ pub struct SystemInfo {
     pub cpu: String,
     pub gpu: String,
     pub memory: String,
-    pub disk: String,
+    pub disks: Vec<disk::DiskInfo>,
+    pub displays: Vec<String>,
     pub battery: Option<String>,
     pub uptime: String,
     pub bios: String,
@@ -62,7 +64,8 @@ pub fn collect() -> SystemInfo {
         cpu: cpu::name(),
         gpu: gpu::name(),
         memory: memory::usage(),
-        disk: disk::usage(),
+        disks: disk::all(),
+        displays: display::active(),
         battery: battery::status(),
         uptime: uptime::formatted(),
         bios: bios::info(),
