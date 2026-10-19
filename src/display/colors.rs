@@ -19,13 +19,13 @@ pub struct Theme {
 }
 
 impl Theme {
-    pub fn auto() -> Self {
+    pub fn auto(no_color: bool) -> Self {
         let terminal = io::stdout().is_terminal();
-        let no_color = env::var_os("NO_COLOR").is_some();
+        let disabled_by_env = env::var_os("NO_COLOR").is_some();
         let dumb = env::var("TERM").is_ok_and(|term| term == "dumb");
 
         Self {
-            enabled: terminal && !no_color && !dumb,
+            enabled: terminal && !no_color && !disabled_by_env && !dumb,
         }
     }
 

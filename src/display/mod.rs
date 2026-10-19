@@ -4,6 +4,7 @@ mod logo;
 
 use crate::system::SystemInfo;
 
+use crate::cli::Options;
 use colors::{Color, Theme};
 use layout::Line;
 
@@ -72,10 +73,10 @@ fn render_line(line: &Line, theme: &Theme) -> String {
     }
 }
 
-pub fn render(info: &SystemInfo) {
-    let theme = Theme::auto();
+pub fn render(info: &SystemInfo, options: &Options) {
+    let theme = Theme::auto(options.no_color);
 
-    let logo_lines = logo::load();
+    let logo_lines = logo::load(options.logo.as_deref(), options.no_logo);
     let info_lines = layout::build(info);
 
     let logo_width = logo_lines

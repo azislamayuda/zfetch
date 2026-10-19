@@ -69,10 +69,22 @@ pub fn name() -> String {
         && let Ok(output) = Command::new("ptyxis").arg("--version").output()
         && output.status.success()
     {
-        let text = String::from_utf8_lossy(&output.stdout);
+        let bytes = if output.stdout.is_empty() {
+            &output.stderr
+        } else {
+            &output.stdout
+        };
 
-        if let Some(version) = text.split_whitespace().last()
-            && version.starts_with(|c: char| c.is_ascii_digit())
+        let text = String::from_utf8_lossy(bytes);
+
+        let version = text.lines().find_map(|line| {
+            line.trim()
+                .strip_prefix("Ptyxis ")
+                .and_then(|value| value.split_whitespace().next())
+        });
+
+        if let Some(version) = version
+            && version.chars().next().is_some_and(|c| c.is_ascii_digit())
         {
             return format!("Ptyxis {version}");
         }
