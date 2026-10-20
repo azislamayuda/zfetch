@@ -8,14 +8,40 @@ use std::{
 // ============================================
 
 fn count_dpkg() -> Option<usize> {
-    let content = fs::read_to_string("/var/lib/dpkg/status").ok()?;
+    use std::io::BufRead;
 
-    Some(
-        content
-            .lines()
-            .filter(|line| *line == "Status: install ok installed")
-            .count(),
-    )
+    let file = fs::File::open("/var/lib/dpkg/status").ok()?;
+
+    let mut reader = std::io::BufReader::with_capacity(64 * 1024, file);
+
+    let mut line = Vec::with_capacity(256);
+    let mut count = 0usize;
+
+    loop {
+        line.clear();
+
+        match reader.read_until(b'\n', &mut line) {
+            Ok(0) => break,
+
+            Ok(_) => {
+                if line.last() == Some(&b'\n') {
+                    line.pop();
+                }
+
+                if line.last() == Some(&b'\r') {
+                    line.pop();
+                }
+
+                if line.as_slice() == b"Status: install ok installed" {
+                    count += 1;
+                }
+            }
+
+            Err(_) => return None,
+        }
+    }
+
+    Some(count)
 }
 
 // ============================================
