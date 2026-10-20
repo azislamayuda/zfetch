@@ -39,3 +39,44 @@ inherits = "release"
 opt-level = "s"
 lto = "fat"
 codegen-units = 1
+
+# ============================================
+# ZFETCH DEBIAN PACKAGE
+# ============================================
+
+[package.metadata.deb]
+
+maintainer = "Azis Lamayuda"
+copyright = "2026 Azis Lamayuda"
+
+license-file = ["LICENSE", "0"]
+
+section = "utils"
+priority = "optional"
+
+# Detect runtime library dependencies.
+depends = "$auto"
+
+# Use our optimized compact Rust profile.
+profile = "compact"
+
+# Files included in the Debian package.
+
+
+extended-description = """
+zfetch is a fast and lightweight Linux system information
+tool written in Rust.
+
+It displays operating system, hardware, memory, disk,
+network, desktop environment, and package information.
+
+Features include JSONC configuration, custom ASCII logos,
+terminal colors, and optimized system detection.
+"""
+
+assets = [
+    ["target/release/zfetch", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/zfetch/README.md", "644"],
+    ["LICENSE", "usr/share/doc/zfetch/LICENSE", "644"],
+]
+
