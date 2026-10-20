@@ -1,7 +1,18 @@
+
 [package]
 name = "zfetch"
 version = "0.1.0"
 edition = "2024"
+
+description = "A fast, lightweight and customizable Linux system information tool written in Rust"
+license = "MIT"
+
+repository = "https://github.com/azislamayuda/zfetch"
+homepage = "https://github.com/azislamayuda/zfetch"
+readme = "README.md"
+
+keywords = ["linux", "system-information", "fastfetch", "cli"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 json5 = "1.3"
