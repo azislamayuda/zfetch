@@ -126,8 +126,6 @@ pub fn collect(config: &Config) -> SystemInfo {
         let displays_task = enabled(hardware, "display")
             .then(|| scope.spawn(|| profile("displays", display::active)));
 
-        let gpu_task = enabled(hardware, "gpu").then(|| scope.spawn(|| profile("gpu", gpu::name)));
-
         let battery_task = enabled(hardware, "battery")
             .then(|| scope.spawn(|| profile("battery", battery::status)));
 
@@ -176,6 +174,8 @@ pub fn collect(config: &Config) -> SystemInfo {
 
         let cpu = detect_if(enabled(hardware, "cpu"), "cpu", cpu::name);
 
+        let gpu = detect_if(enabled(hardware, "gpu"), "gpu", gpu::name);
+
         let memory = detect_if(enabled(hardware, "memory"), "memory", memory::usage);
 
         let swap = detect_if(enabled(hardware, "swap"), "swap", swap::usage);
@@ -194,7 +194,6 @@ pub fn collect(config: &Config) -> SystemInfo {
         let terminal = join_or_default(terminal_task);
         let packages = join_or_default(packages_task);
         let displays = join_or_default(displays_task);
-        let gpu = join_or_default(gpu_task);
         let battery = join_or_default(battery_task);
 
         // ------------------------------------
