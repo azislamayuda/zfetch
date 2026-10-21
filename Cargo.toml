@@ -1,7 +1,7 @@
 
 [package]
 name = "zfetch"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 description = "A fast, lightweight and customizable Linux system information tool written in Rust"
@@ -55,7 +55,7 @@ section = "utils"
 priority = "optional"
 
 # Detect runtime library dependencies.
-depends = "$auto"
+depends = "apt, curl, coreutils, dpkg, $auto"
 
 # Use our optimized compact Rust profile.
 profile = "compact"
@@ -70,7 +70,7 @@ tool written in Rust.
 It displays operating system, hardware, memory, disk,
 network, desktop environment, and package information.
 
-Features include JSONC configuration, custom ASCII logos,
+Features include JSONC configuration, automatic distro ASCII logos,
 terminal colors, and optimized system detection.
 """
 
@@ -78,5 +78,7 @@ assets = [
     ["target/release/zfetch", "usr/bin/", "755"],
     ["README.md", "usr/share/doc/zfetch/README.md", "644"],
     ["LICENSE", "usr/share/doc/zfetch/LICENSE", "644"],
+    ["docs/licenses/fastfetch-MIT.txt", "usr/share/doc/zfetch/fastfetch-MIT.txt", "644"],
+    ["docs/THIRD_PARTY_LOGOS.md", "usr/share/doc/zfetch/THIRD_PARTY_LOGOS.md", "644"],
 ]
 

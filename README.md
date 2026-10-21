@@ -1,12 +1,22 @@
 # zfetch
 
+## What's new in v0.2.0
+
+- Automatic Linux distribution ASCII logo database (built-in, no startup network).
+- `zfetch --check-update` to check stable GitHub Releases on demand.
+- `zfetch --update` to review and optionally install a verified Debian update.
+- Existing custom ASCII logos and configuration retain priority.
+
+See [v0.2.0 feature guide](docs/V0.2.0.md) for details.
+
+
 **Fast. Lightweight. Rust-powered.**
 
 A fast, lightweight, and customizable Linux system information tool written in Rust.
 
 zfetch is an open-source command-line application that displays essential system and hardware information with minimal overhead. Built as an alternative to Fastfetch, zfetch focuses on native Linux detection, startup performance, efficient memory usage, and a customizable terminal experience.
 
-**Version:** 0.1.0  
+**Version:** 0.2.0  
 **Platform:** Linux  
 **Language:** Rust (Edition 2024)  
 **License:** MIT  
@@ -176,13 +186,13 @@ When the GitHub Release is published, download the appropriate `.deb` asset from
 Package filename:
 
 ```text
-zfetch_0.1.0-1_amd64.deb
+zfetch_0.2.0-1_amd64.deb
 ```
 
 Install using APT:
 
 ```bash
-sudo apt install ./zfetch_0.1.0-1_amd64.deb
+sudo apt install ./zfetch_0.2.0-1_amd64.deb
 ```
 
 Verify the installation:
@@ -279,7 +289,7 @@ target/debian/
 For version 0.1.0, the expected filename is:
 
 ```text
-zfetch_0.1.0-1_amd64.deb
+zfetch_0.2.0-1_amd64.deb
 ```
 
 The Debian packaging configuration uses the Compact build profile.
