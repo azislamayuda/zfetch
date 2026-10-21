@@ -34,6 +34,23 @@ struct Asset {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Version(u64, u64, u64);
 
+#[derive(Debug, PartialEq, Eq)]
+enum ReleaseStatus {
+    LocalNewer,
+    SameVersion,
+    UpdateAvailable,
+}
+
+fn release_status(current: &Version, latest: &Version) -> ReleaseStatus {
+    if latest < current {
+        ReleaseStatus::LocalNewer
+    } else if latest == current {
+        ReleaseStatus::SameVersion
+    } else {
+        ReleaseStatus::UpdateAvailable
+    }
+}
+
 fn parse_version(input: &str) -> Option<Version> {
     let clean = input.trim().trim_start_matches('v');
     let mut parts = clean.split('.');
@@ -222,13 +239,21 @@ pub fn run(check_only: bool) -> Result<(), String> {
     let remote_version = parse_version(&release.tag_name)
         .ok_or("latest release has an unsupported version format")?;
 
-    println!("Installed version : v{current}");
-    println!("Latest version    : {}", release.tag_name);
-    println!("Release           : {}", release.html_url);
+    println!("Current version : v{current}");
+    println!("Latest release  : {}", release.tag_name);
+    println!("Release         : {}", release.html_url);
 
-    if remote_version <= current_version {
-        println!("zfetch is already up to date.");
-        return Ok(());
+    match release_status(&current_version, &remote_version) {
+        ReleaseStatus::LocalNewer => {
+            println!("Your current build is newer than the latest public release.");
+            println!("No update required.");
+            return Ok(());
+        }
+        ReleaseStatus::SameVersion => {
+            println!("You are running the latest public release.");
+            return Ok(());
+        }
+        ReleaseStatus::UpdateAvailable => {}
     }
 
     if check_only {
@@ -315,6 +340,23 @@ mod tests {
         assert!(parse_version("v1.0.0") > parse_version("0.99.99"));
         assert_eq!(parse_version("0.2.0"), Some(Version(0, 2, 0)));
         assert!(parse_version("0.2.0-beta").is_none());
+    }
+
+    #[test]
+    fn categorizes_release_versions() {
+        let current = Version(0, 2, 0);
+        assert_eq!(
+            release_status(&current, &Version(0, 1, 0)),
+            ReleaseStatus::LocalNewer
+        );
+        assert_eq!(
+            release_status(&current, &Version(0, 2, 0)),
+            ReleaseStatus::SameVersion
+        );
+        assert_eq!(
+            release_status(&current, &Version(0, 2, 1)),
+            ReleaseStatus::UpdateAvailable
+        );
     }
 
     #[test]
