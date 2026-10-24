@@ -80,6 +80,12 @@ fn curl_bytes(url: &str, output: Option<&Path>) -> Result<Vec<u8>, String> {
         "8",
         "--max-time",
         if output.is_some() { "120" } else { "12" },
+        "--max-filesize",
+        if output.is_some() {
+            "67108864"
+        } else {
+            "1048576"
+        },
         "--user-agent",
         "zfetch-updater/0.2.0",
     ]);
@@ -112,25 +118,41 @@ fn fetch_release() -> Result<Release, String> {
     Ok(release)
 }
 
-fn deb_asset<'a>(release: &'a Release, version: &str) -> Option<&'a Asset> {
+fn native_deb_arch() -> Option<&'static str> {
+    match env::consts::ARCH {
+        "x86_64" => Some("amd64"),
+        "aarch64" => Some("arm64"),
+        _ => None,
+    }
+}
+
+fn trusted_asset_url(release: &Release, asset: &Asset) -> bool {
+    let prefix = format!("{ASSET_URL_PREFIX}{}/", release.tag_name);
+    let expected = format!("{prefix}{}", asset.name);
+    asset.browser_download_url == expected
+}
+
+fn deb_asset<'a>(release: &'a Release, version: &str, arch: &str) -> Option<&'a Asset> {
     let expected_start = format!("zfetch_{version}-");
     release.assets.iter().find(|asset| {
         asset.name.starts_with(&expected_start)
-            && asset.name.ends_with("_amd64.deb")
+            && asset.name.ends_with(&format!("_{arch}.deb"))
             && asset
                 .name
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
-            && asset.browser_download_url.starts_with(ASSET_URL_PREFIX)
+            && trusted_asset_url(release, asset)
             && asset.size > 0
+            && asset.size <= 64 * 1024 * 1024
     })
 }
 
 fn sha256_asset(release: &Release) -> Option<&Asset> {
     release.assets.iter().find(|asset| {
         asset.name == "SHA256SUMS"
-            && asset.browser_download_url.starts_with(ASSET_URL_PREFIX)
+            && trusted_asset_url(release, asset)
             && asset.size > 0
+            && asset.size <= 1024 * 1024
     })
 }
 
@@ -166,7 +188,7 @@ fn verify_checksum(file: &Path, expected: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn verify_deb_package(path: &Path, version: &str) -> Result<(), String> {
+fn verify_deb_package(path: &Path, version: &str, arch: &str) -> Result<(), String> {
     let output = Command::new("dpkg-deb")
         .arg("--field")
         .arg(path)
@@ -182,7 +204,7 @@ fn verify_deb_package(path: &Path, version: &str) -> Result<(), String> {
         || !fields.lines().any(|line| line.starts_with(&prefix))
         || !fields
             .lines()
-            .any(|line| line.trim() == "Architecture: amd64")
+            .any(|line| line.trim() == format!("Architecture: {arch}"))
     {
         return Err("package name, version, or architecture does not match release".into());
     }
@@ -190,6 +212,17 @@ fn verify_deb_package(path: &Path, version: &str) -> Result<(), String> {
 }
 
 fn installed_by_dpkg() -> bool {
+    // Do not update a source build or a shadowed user/local binary.
+    let Ok(exe) = env::current_exe().and_then(fs::canonicalize) else {
+        return false;
+    };
+    let Ok(packaged) = fs::canonicalize("/usr/bin/zfetch") else {
+        return false;
+    };
+    if exe != packaged {
+        return false;
+    }
+
     let Ok(result) = Command::new("dpkg-query")
         .args(["-W", "-f=${Status}", "zfetch"])
         .output()
@@ -268,13 +301,11 @@ pub fn run(check_only: bool) -> Result<(), String> {
         ));
     }
 
-    if env::consts::ARCH != "x86_64" {
-        return Err("automatic .deb update currently supports x86_64 only".into());
-    }
+    let arch = native_deb_arch().ok_or("automatic .deb update supports only x86_64 and aarch64")?;
 
     let version = release.tag_name.trim_start_matches('v');
-    let deb =
-        deb_asset(&release, version).ok_or("latest release has no matching amd64 .deb asset")?;
+    let deb = deb_asset(&release, version, arch)
+        .ok_or(format!("latest release has no matching {arch} .deb asset"))?;
     let sums = sha256_asset(&release)
         .ok_or("release has no SHA256SUMS asset; automatic update refused for safety")?;
 
@@ -305,12 +336,18 @@ pub fn run(check_only: bool) -> Result<(), String> {
         return Err("downloaded package size differs from GitHub asset metadata".into());
     }
 
+    let sum_size = fs::metadata(&sums_path)
+        .map_err(|error| format!("missing checksum file: {error}"))?
+        .len();
+    if sum_size > 1024 * 1024 || sum_size != sums.size {
+        return Err("invalid checksum file size".into());
+    }
     let sum_text = fs::read_to_string(&sums_path)
         .map_err(|error| format!("cannot read SHA256SUMS: {error}"))?;
     let expected = expected_checksum(&sum_text, &deb.name)
         .ok_or("SHA256SUMS is missing a valid checksum for the .deb package")?;
     verify_checksum(&deb_path, &expected)?;
-    verify_deb_package(&deb_path, version)?;
+    verify_deb_package(&deb_path, version, arch)?;
     println!("Checksum and package metadata verified.");
     println!("Starting APT installation (sudo may request your password)...");
 
@@ -333,6 +370,33 @@ pub fn run(check_only: bool) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_arch_is_supported_or_explicitly_rejected() {
+        let actual = native_deb_arch();
+        assert!(matches!(actual, Some("amd64") | Some("arm64") | None));
+    }
+
+    #[test]
+    fn asset_urls_must_match_release_exactly() {
+        let release = Release {
+            tag_name: "v0.4.0".into(),
+            html_url: format!("{RELEASE_URL_PREFIX}tag/v0.4.0"),
+            draft: false,
+            prerelease: false,
+            assets: vec![],
+        };
+        let good = Asset {
+            name: "zfetch_0.4.0-1_arm64.deb".into(),
+            browser_download_url: format!("{ASSET_URL_PREFIX}v0.4.0/zfetch_0.4.0-1_arm64.deb"),
+            size: 1234,
+        };
+        assert!(trusted_asset_url(&release, &good));
+        let mut bad = good;
+        bad.browser_download_url =
+            "https://github.com/azislamayuda/zfetch/releases/download/v0.4.0/another.deb".into();
+        assert!(!trusted_asset_url(&release, &bad));
+    }
 
     #[test]
     fn compares_versions_numerically() {
