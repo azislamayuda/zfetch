@@ -17,6 +17,14 @@ pub enum OutputFormat {
     Json,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LayoutMode {
+    Compact,
+    #[default]
+    Classic,
+    Detailed,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Preset {
     Minimal,
@@ -35,6 +43,7 @@ pub struct Options {
     pub only: Option<Vec<String>>,
     pub exclude: Option<Vec<String>>,
     pub preset: Option<Preset>,
+    pub layout: LayoutMode,
     pub theme: Option<String>,
     pub hardware_details: bool,
 }
@@ -162,6 +171,18 @@ fn parse_args<I: Iterator<Item = String>>(mut args: I) -> Result<Action, String>
                 )?);
                 ordinary_options = true;
             }
+            "--layout" => {
+                let value = args
+                    .next()
+                    .ok_or("--layout requires compact, classic or detailed")?;
+                options.layout = match value.as_str() {
+                    "compact" => LayoutMode::Compact,
+                    "classic" => LayoutMode::Classic,
+                    "detailed" => LayoutMode::Detailed,
+                    _ => return Err(format!("Unknown layout: {value}")),
+                };
+                ordinary_options = true;
+            }
             "--preset" => {
                 let value = args
                     .next()
@@ -182,6 +203,11 @@ fn parse_args<I: Iterator<Item = String>>(mut args: I) -> Result<Action, String>
         }
     }
 
+    if options.format == OutputFormat::Json && options.layout != LayoutMode::Classic {
+        return Err(
+            "--layout compact/detailed is terminal-only; use --hardware-details with JSON".into(),
+        );
+    }
     if options.no_logo && options.logo.is_some() {
         return Err("--logo and --no-logo cannot be used together".into());
     }
@@ -231,7 +257,8 @@ pub fn print_help() {
     println!("      --only <MODULES>    Detect only listed modules");
     println!("      --exclude <MODULES> Skip listed modules");
     println!("      --list-modules      Show supported module names");
-    println!("      --preset <NAME>     minimal, default or full");
+    println!("      --preset <NAME>     minimal, default or full (module selection)");
+    println!("      --layout <NAME>     compact, classic (default), detailed");
     println!("      --theme <NAME>      Select a built-in ANSI theme");
     println!("      --list-themes       Show available themes");
     println!("      --hardware-details Append CPU core/thread details");
@@ -247,6 +274,30 @@ mod tests {
     fn parse(input: &[&str]) -> Result<Action, String> {
         parse_args(input.iter().map(|s| s.to_string()))
     }
+    #[test]
+    fn sprint03_layout_parsing() {
+        for (name, expected) in [
+            ("compact", LayoutMode::Compact),
+            ("classic", LayoutMode::Classic),
+            ("detailed", LayoutMode::Detailed),
+        ] {
+            match parse(&["--layout", name]).unwrap() {
+                Action::Run(options) => assert_eq!(options.layout, expected),
+                _ => panic!("expected Run"),
+            }
+        }
+        assert!(parse(&["--layout", "unknown"]).is_err());
+        assert!(parse(&["--layout"]).is_err());
+    }
+
+    #[test]
+    fn sprint03_json_layout_rejects_display_modes() {
+        assert!(parse(&["--format", "json", "--layout", "compact"]).is_err());
+        assert!(parse(&["--format", "json", "--layout", "detailed"]).is_err());
+        assert!(parse(&["--format", "json", "--layout", "classic"]).is_ok());
+        assert!(parse(&["--format", "json", "--hardware-details"]).is_ok());
+    }
+
     #[test]
     fn rejects_empty_modules() {
         assert!(parse(&["--only", "os,,cpu"]).is_err());

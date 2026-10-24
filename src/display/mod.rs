@@ -66,6 +66,24 @@ fn render_line(line: &Line, theme: &Theme) -> String {
     }
 }
 
+/// Compact vertical list with no ASCII logo, decorative sections or blank lines.
+/// Reuses the classic renderer's existing theme and module formatting.
+pub fn render_compact(info: &SystemInfo, options: &Options, config: &Config) {
+    let theme = Theme::auto(options.no_color, &config.theme);
+    println!(
+        "{}",
+        theme.paint(
+            &format!("zfetch v{}", env!("CARGO_PKG_VERSION")),
+            Color::Title
+        )
+    );
+    for line in layout::build(info, config) {
+        if let Line::Item { .. } = &line {
+            println!("{}", render_line(&line, &theme));
+        }
+    }
+}
+
 pub fn render(info: &SystemInfo, options: &Options, config: &Config) {
     let theme = Theme::auto(options.no_color, &config.theme);
 

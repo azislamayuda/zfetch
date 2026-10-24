@@ -47,7 +47,11 @@ fn main() -> ExitCode {
                 return ExitCode::from(2);
             }
         }
-        cli::Action::Run(options) => {
+        cli::Action::Run(mut options) => {
+            // Detailed layout explicitly opts into slower sysfs hardware queries.
+            if options.layout == cli::LayoutMode::Detailed {
+                options.hardware_details = true;
+            }
             let mut config = match config::Config::load(options.config.as_deref()) {
                 Ok(config) => config,
                 Err(error) => {
@@ -73,7 +77,11 @@ fn main() -> ExitCode {
                     }
                 }
             } else {
-                display::render(&info, &options, &config);
+                if options.layout == cli::LayoutMode::Compact {
+                    display::render_compact(&info, &options, &config);
+                } else {
+                    display::render(&info, &options, &config);
+                }
             }
         }
     }

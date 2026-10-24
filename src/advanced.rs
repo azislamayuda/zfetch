@@ -5,7 +5,12 @@ use crate::{
     system::SystemInfo,
 };
 use serde_json::{Map, Value, json};
-use std::{collections::HashSet, env, fs, io::Write, path::PathBuf};
+use std::{
+    collections::HashSet,
+    env, fs,
+    io::{IsTerminal, Write},
+    path::PathBuf,
+};
 
 pub const SYSTEM_MODULES: &[&str] = &[
     "os", "kernel", "arch", "shell", "de", "session", "wm", "terminal", "packages",
@@ -29,8 +34,32 @@ pub fn list_modules() {
 }
 
 pub fn list_themes() {
-    println!("Available themes: {}", THEMES.join(", "));
-    println!("Note: limited to the 8 ANSI named colors supported by zfetch.");
+    let use_color = std::io::stdout().is_terminal() && env::var_os("NO_COLOR").is_none();
+    println!("Available ANSI themes (logo / heading / label / value):");
+    for name in THEMES {
+        let mut config = Config::default();
+        // Every listed name is a supported theme by construction.
+        if apply_theme(&mut config, name).is_err() {
+            continue;
+        }
+        let colors = [
+            config.theme.logo_color,
+            config.theme.heading_color,
+            config.theme.label_color,
+            config.theme.value_color,
+        ];
+        print!("  {name:<14} ");
+        for color in colors {
+            if use_color {
+                print!("\x1b[{}m██\x1b[0m ", color.ansi());
+            } else {
+                print!("[{}] ", color.ansi());
+            }
+        }
+        println!();
+    }
+    println!("Try: zfetch --theme nord --layout classic");
+    println!("Themes use the existing eight ANSI named colors, not truecolor palettes.");
 }
 
 fn validate_names(names: &[String]) -> Result<(), String> {

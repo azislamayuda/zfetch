@@ -31,7 +31,11 @@ fn compact_gpu(value: &str) -> String {
         .find(|name| !name.contains(':') && name.contains(' '));
 
     match model {
-        Some(name) => format!("{vendor} {name}"),
+        Some(name) => {
+            // Keep telemetry suffixes, but discard irrelevant PCI-id brackets.
+            let suffix = value.find(" | ").map_or("", |start| &value[start..]);
+            format!("{vendor} {name}{suffix}")
+        }
         None => value.to_string(),
     }
 }
@@ -258,6 +262,18 @@ mod tests {
         );
 
         assert_eq!(hide_percent("100% (Full)"), "Full");
+    }
+    #[test]
+    fn sprint03_preserve_gpu_telemetry_after_model_compaction() {
+        let raw = "Intel Corporation TigerLake-LP GT2 [Iris Xe Graphics] [8086:9a49] | integrated | Current 600 MHz | Max 1300 MHz";
+        assert_eq!(
+            compact_gpu(raw),
+            "Intel Iris Xe Graphics | integrated | Current 600 MHz | Max 1300 MHz"
+        );
+        assert_eq!(
+            compact_gpu("Intel Corporation TigerLake-LP GT2 [Iris Xe Graphics] [8086:9a49]"),
+            "Intel Iris Xe Graphics"
+        );
     }
 
     #[test]
