@@ -11,6 +11,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import tomllib
 
 
 class SmokeFailure(Exception):
@@ -43,9 +44,13 @@ def main() -> int:
                                    f'stdout: {result.stdout[-1000:]}\nstderr: {result.stderr[-1000:]}')
             return result
 
+        expected_version = tomllib.loads(
+            (Path(__file__).resolve().parents[1] / 'Cargo.toml')
+            .read_text(encoding='utf-8')
+        )['package']['version']
         version = run('--version').stdout.strip()
-        check(version == 'zfetch 0.3.0', f'unexpected version: {version}')
-        print('[PASS] Version v0.3.0')
+        check(version == f'zfetch {expected_version}', f'unexpected version: {version}')
+        print(f'[PASS] Version v{expected_version}')
 
         help_text = run('--help').stdout
         check(all(flag in help_text for flag in ('--format', '--only', '--layout', '--hardware-details')),
@@ -59,10 +64,10 @@ def main() -> int:
         print('[PASS] Modules and themes')
 
         compact = run('--layout', 'compact', '--preset', 'minimal').stdout
-        check('zfetch v0.3.0' in compact and 'SYSTEM INFO' not in compact and 'HARDWARE INFO' not in compact,
+        check(f'zfetch v{expected_version}' in compact and 'SYSTEM INFO' not in compact and 'HARDWARE INFO' not in compact,
               'compact layout contains decorative headings or no version')
         detailed = run('--layout', 'detailed', '--only', 'cpu,gpu,display,battery').stdout
-        check('zfetch v0.3.0' in detailed and 'HARDWARE INFO' in detailed,
+        check(f'zfetch v{expected_version}' in detailed and 'HARDWARE INFO' in detailed,
               'detailed layout failed')
         print('[PASS] Compact/detailed layouts')
 
@@ -70,7 +75,7 @@ def main() -> int:
         check('\x1b' not in raw, 'ANSI escape leaked into JSON')
         document = json.loads(raw)
         check(document.get('schema_version') == 1, 'JSON schema_version changed')
-        check(document.get('zfetch_version') == '0.3.0', 'JSON version mismatch')
+        check(document.get('zfetch_version') == expected_version, 'JSON version mismatch')
         check(set(document['system']) == {'os', 'kernel'}, f'unexpected system JSON keys: {document["system"]}')
         check(set(document['hardware']) == {'cpu', 'memory'}, f'unexpected hardware JSON keys: {document["hardware"]}')
         print('[PASS] JSON schema and --only output')
