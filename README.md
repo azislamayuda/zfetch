@@ -1,5 +1,18 @@
 # zfetch
 
+<!-- zfetch v0.3.0 Sprint 04 -->
+## zfetch v0.3.0 (Development)
+
+The upcoming v0.3.0 adds JSON output, CLI module filtering, optional extended
+hardware information, compact/classic/detailed layouts, theme previews,
+and configuration management. See [v0.3.0 CLI guide](docs/CLI-v0.3.0.md),
+[Sprint 04 release checklist](docs/SPRINT04-RELEASE.md), and
+[v0.3.0 release notes draft](docs/RELEASE-NOTES-v0.3.0.md).
+
+The v0.3.0 Debian package should not be treated as published until GitHub
+Release assets, checksum and installation validation are complete.
+
+
 ## What's new in v0.3.0 (Sprint 01)
 
 - JSON output with `zfetch --format json`.
