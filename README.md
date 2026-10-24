@@ -1,248 +1,220 @@
 # zfetch
 
-**Fast. Lightweight. Rust-powered.**
+**Fast. Lightweight. Rust-powered. Built for Linux.**
 
-zfetch is an open-source Linux system information tool written in Rust. It displays operating system, desktop, hardware, disk, network, and package information in a customizable terminal view, or exports selected information as JSON for scripts and other tools.
+zfetch is an open-source system information CLI written in Rust. It shows your Linux distribution, kernel, desktop environment, hardware, memory, disks, network, battery, and installed package counts in a fast, customizable terminal view. It can also produce machine-readable JSON and export system reports.
 
-Designed as a lightweight alternative to Neofetch and Fastfetch, zfetch favors native Linux interfaces, lazy module detection, and optional hardware telemetry.
+Designed as a lightweight alternative to Neofetch and Fastfetch, zfetch uses native Linux interfaces, selective detection, and an embedded database of distribution ASCII logos.
 
-[Releases](https://github.com/azislamayuda/zfetch/releases) · [Issues](https://github.com/azislamayuda/zfetch/issues) · [CLI Guide](docs/CLI-v0.3.0.md) · [License](LICENSE)
+[Releases](https://github.com/azislamayuda/zfetch/releases) · [Issues](https://github.com/azislamayuda/zfetch/issues) · [Documentation](docs/) · [License](LICENSE)
 
-**Current source version:** `v0.4.0` (release candidate)\
-**Platform:** Linux (x86_64 / ARM64; native and portable builds)\
-**Language:** Rust, edition 2024  
-**License:** MIT  
-**Author:** [Azis Lamayuda](https://github.com/azislamayuda)
+| Project | Details |
+| --- | --- |
+| Current source version | **v0.4.0** |
+| Platform | **Linux** — native packages and portable builds |
+| CPU architectures | **x86_64 / amd64** and **aarch64 / arm64**, depending on format |
+| Language | **Rust (edition 2024)** |
+| License | **MIT** |
+| Author | [Azis Lamayuda](https://github.com/azislamayuda) |
 
 ## What's new in v0.4.0
 
-- **Cross-distro packaging:** Debian, RPM, Arch Linux, and portable Linux binaries.
-- **Multi-architecture support:** x86_64/amd64 and ARM64/aarch64 where available.
-- **Static musl binaries:** Portable builds without a host GLIBC dependency.
-- **Improved compatibility:** Debian GLIBC 2.35 and RPM GLIBC 2.34 build targets.
-- **Privacy Mode:** `--privacy` redacts selected personal information.
-- **Safe report export:** `--export` saves terminal or JSON reports, prevents overwrites, and uses private file permissions.
-- **Hardware improvements:** Enhanced CPU, GPU, and desktop detection, including ARM64 fallbacks.
-- **Quality assurance:** 80 passing Rust unit tests and automated packaging workflows.
-
-The v0.4.0 release packages are undergoing final verification. Package availability and runtime compatibility depend on the target Linux environment.
-
-## What's new in v0.3.0
-
-- **JSON output:** machine-readable system data with `--format json` (schema version 1).
-- **CLI module selection:** `--only`, `--exclude`, and `--list-modules`; unselected detectors are skipped.
-- **Three terminal layouts:** `compact`, `classic`, and `detailed`.
-- **Module presets:** `minimal`, `default`, and `full`.
-- **Six ANSI themes:** `default`, `monochrome`, `nord`, `gruvbox`, `rust`, and `high-contrast`.
-- **Configuration tools:** `--init-config` and `--validate-config`.
-- **Extended hardware information:** CPU topology and frequency, GPU classification and clocks when available, battery estimates, and physical display size via EDID.
-- **Quality improvements:** 63 passing Rust unit tests, offline CLI smoke checks, CI workflow, and Debian release checks on the tested development build.
-
-v0.3.0 retains the automatic distribution ASCII logo database and GitHub update checking introduced in v0.2.0. See the [v0.3.0 release notes](docs/RELEASE-NOTES-v0.3.0.md).
+- **Expanded Linux packaging:** Debian/Ubuntu `.deb`, RPM-family `.rpm`, Arch Linux `.pkg.tar.zst`, and portable `.tar.gz` builds.
+- **Multi-architecture releases:** amd64/x86_64 and arm64/aarch64 where supported by the package format.
+- **Statically linked musl binaries:** Portable builds that do not depend on the host GLIBC version.
+- **Wider GLIBC compatibility:** Debian builds target **GLIBC 2.35**; RPM and GNU portable builds target **GLIBC 2.34**.
+- **Privacy Mode:** `--privacy` hides selected identity, network, and personal mount information.
+- **Safe report export:** `--export` writes terminal or JSON reports with private file permissions and refuses to overwrite existing files.
+- **Better hardware and desktop detection:** Improvements to CPU, GPU, ARM64, and desktop-environment fallbacks.
+- **Reliable builds:** 80 passing Rust unit tests, offline CLI regression checks, and automated multi-architecture packaging pipelines.
 
 ## Features
 
-| Category | Information |
+| Area | Capabilities |
 | --- | --- |
-| System | Distribution, kernel, architecture, shell, desktop environment, session, window manager, terminal, package counts |
-| Hardware | Host, BIOS, display, CPU, GPU, memory, swap, disks, battery, uptime |
+| System | Distribution, kernel, architecture, shell, DE, session, WM, terminal, packages |
+| Hardware | Host, BIOS, display, CPU, GPU, RAM, swap, disks, battery, uptime |
 | Network | Local IPv4 address and interface |
-| Packages | DPKG, Flatpak, and AppImage counts where supported |
-| Display | ASCII logo, configurable alignment and colors, layouts, themes, presets |
-| Automation | JSON output, selected modules, configuration validation |
-| Maintenance | Optional GitHub Release checking and interactive Debian package update |
+| Package counts | DPKG, RPM, Pacman, Flatpak, Snap, and AppImage where detectable |
+| Terminal | Automatic distro ASCII logo, custom logo, ANSI colors, six themes, three layouts |
+| Customization | JSONC configuration, module filtering, module presets, hardware details |
+| Automation | Machine-readable JSON, private text/JSON report export |
+| Maintenance | On-demand GitHub release checking; interactive `.deb` updates on compatible systems |
 
-Hardware details are best-effort. Availability depends on the kernel, device, driver, permissions, and desktop environment. Some values may be omitted if they cannot be reliably detected.
+Hardware and desktop fields are detected on a best-effort basis. Some values require support from the kernel, drivers, desktop services, or package database.
 
-## Preview
+## Linux support and downloads
 
-An example of `zfetch --no-logo` on the development machine:
+**zfetch is designed for a broad range of Linux distributions, not just Debian.** Choose the native package when one is provided for your distribution, or use a portable build with a compatible Linux kernel and CPU architecture.
 
-```text
-lamayuda@lamayuda
-zfetch v0.3.0
+| Linux environment | Release format | Architectures | Notes |
+| --- | --- | --- | --- |
+| Debian, Ubuntu, Linux Mint, Pop!_OS, and derivatives | `.deb` | amd64, arm64 | Built on Ubuntu 22.04; GLIBC 2.35 target |
+| Rocky Linux 9, AlmaLinux 9, Fedora, and compatible RPM systems | `.rpm` | x86_64, aarch64 | Built and smoke-tested on Rocky Linux 9; GLIBC 2.34 target |
+| Arch Linux, Manjaro, EndeavourOS, and derivatives | `.pkg.tar.zst` | x86_64 | Built using Arch Linux tooling |
+| Other compatible GNU/Linux distributions | GNU `.tar.gz` | x86_64, aarch64 | Requires compatible GLIBC (target 2.34) and shared libraries |
+| Other Linux distributions, including musl-based systems | Static musl `.tar.gz` | x86_64, aarch64 | No host GLIBC requirement; depends on compatible kernel/architecture |
 
-SYSTEM INFO ────────────────────────────
-OS          Ubuntu 26.04.1 LTS
-Kernel      7.0.0-38-generic
-Arch        x86_64
-Shell       bash 5.3.9
-DE          GNOME 50.1
-Session     Wayland
-WM          Mutter (Wayland)
-Terminal    Ptyxis 50.1
-Packages    13 (appimage), 3381 (dpkg), 26 (flatpak)
+**Important:** A portable binary is not a guarantee of compatibility with every distribution, kernel, hardware platform, or security policy. The CI matrix validates builds and selected smoke tests; not every Linux distribution has been tested individually. Users of openSUSE, Gentoo, Void, Alpine, NixOS, and other distributions can try the appropriate portable build or compile from source.
 
-HARDWARE INFO ────────────────────────────
-Host        Dell Inc. Latitude 3320
-Display     1920x1080 @ 60 Hz [Built-in] (eDP-1)
-CPU         11th Gen Intel(R) Core(TM) i5-1145G7 @ 2.60GHz
-GPU         Intel Iris Xe Graphics
-Memory      9.07 GiB / 14.86 GiB (61%)
-Battery     100% (Full)
-```
+### Release assets — v0.4.0
 
-This is an illustrative excerpt of actual development-machine output. Values change with system state and configuration; additional modules are normally displayed.
+Download from [GitHub Releases](https://github.com/azislamayuda/zfetch/releases) after the release is published.
 
-For extended hardware information:
+| Asset | Target |
+| --- | --- |
+| `zfetch_0.4.0-1_amd64.deb` | Debian/Ubuntu x86_64 |
+| `zfetch_0.4.0-1_arm64.deb` | Debian/Ubuntu ARM64 |
+| `zfetch-0.4.0-1.el9.x86_64.rpm` | RPM-based Linux x86_64 |
+| `zfetch-0.4.0-1.el9.aarch64.rpm` | RPM-based Linux ARM64 |
+| `zfetch-0.4.0-1-x86_64.pkg.tar.zst` | Arch Linux x86_64 |
+| `zfetch-0.4.0-linux-x86_64-gnu.tar.gz` | GNU/Linux portable x86_64 |
+| `zfetch-0.4.0-linux-aarch64-gnu.tar.gz` | GNU/Linux portable ARM64 |
+| `zfetch-0.4.0-linux-x86_64-musl.tar.gz` | Static portable x86_64 |
+| `zfetch-0.4.0-linux-aarch64-musl.tar.gz` | Static portable ARM64 |
+
+The release also includes `SHA256SUMS` to verify downloaded files. On systems with GNU `sha256sum`, run this in the directory containing the checksum file and downloaded package(s):
 
 ```bash
-zfetch --layout detailed
+sha256sum -c --ignore-missing SHA256SUMS
 ```
 
-Example extended fields include `4 cores / 8 threads`, `Kernel Base 1.50 GHz`, `Max 4.40 GHz`, `integrated`, Intel GPU clock frequencies, and a `13.3"` display size on the tested machine. Not all hardware provides these fields.
+This verifies matching local files against the published checksums; verify that the expected package actually reports `OK`. SHA-256 checksums alone do not replace publisher-signature verification.
 
 ## Installation
 
-### Prebuilt Linux packages
+### Debian, Ubuntu, and derivatives
 
-The v0.4.0 release candidate supports the following build formats:
+```bash
+sudo apt install ./zfetch_0.4.0-1_amd64.deb
+zfetch --version
+```
 
-| Linux distribution | Package format | Architecture |
-| --- | --- | --- |
-| Debian, Ubuntu, Linux Mint and derivatives | `.deb` | amd64, arm64 |
-| Fedora, Rocky Linux and compatible systems | `.rpm` | x86_64, aarch64 |
-| Arch Linux and derivatives | `.pkg.tar.zst` | x86_64 |
-| Compatible GNU/Linux systems | `.tar.gz` (GNU) | x86_64, aarch64 |
-| Portable Linux | `.tar.gz` (static musl) | x86_64, aarch64 |
+For an ARM64 system, use `zfetch_0.4.0-1_arm64.deb` instead. APT checks the available runtime dependencies before installation.
 
-After release, download the matching asset from [GitHub Releases](https://github.com/azislamayuda/zfetch/releases) and verify its SHA-256 checksum.
+### Fedora, Rocky Linux, and RPM-based systems
 
-Install Debian packages using `sudo apt install ./PACKAGE.deb`, RPM packages using the native package manager such as `dnf`, or Arch packages using `pacman -U`.
+```bash
+sudo dnf install ./zfetch-0.4.0-1.el9.x86_64.rpm
+zfetch --version
+```
 
-For portable builds, extract the archive and run its `zfetch` executable. Static musl builds avoid a host GLIBC dependency but still require a compatible Linux kernel and CPU architecture.
+Use the `aarch64` RPM on ARM64 and your distribution's supported RPM package manager. These RPMs are built against Rocky Linux 9, so compatibility with other RPM distributions should be checked rather than assumed.
 
-The interactive `zfetch --update` installer currently supports compatible Debian package installations. For RPM, Arch, and portable packages, use the appropriate package manager or manual installation method.
+### Arch Linux and derivatives
+
+```bash
+sudo pacman -U ./zfetch-0.4.0-1-x86_64.pkg.tar.zst
+zfetch --version
+```
+
+A native Arch package is currently provided for x86_64 only.
+
+### Portable static musl (recommended for other distributions)
+
+The portable build can be executed without installing a system package:
+
+```bash
+tar -xzf zfetch-0.4.0-linux-x86_64-musl.tar.gz
+./zfetch-0.4.0-linux-x86_64-musl/zfetch --version
+./zfetch-0.4.0-linux-x86_64-musl/zfetch
+```
+
+Choose `aarch64-musl` for ARM64. The GNU portable archives can be used in the same way, but require compatible GLIBC and shared libraries. Portable archives include `zfetch`, `README.md`, and `LICENSE`.
 
 ### Build from source
 
-Install a compatible stable Rust toolchain and Git, then run:
+Install a recent stable Rust toolchain (edition 2024 support) and Git:
 
 ```bash
 git clone https://github.com/azislamayuda/zfetch.git
 cd zfetch
-cargo build --release
-./target/release/zfetch
-```
-
-For the optimized **Compact** profile used for packaging:
-
-```bash
 cargo build --locked --profile compact
+./target/compact/zfetch --version
 ./target/compact/zfetch
 ```
 
-To build a local Debian package (requires [`cargo-deb`](https://github.com/kornelski/cargo-deb)):
+For a conventional release build, use `cargo build --release` and run `./target/release/zfetch`.
+
+## Usage
 
 ```bash
-cargo install cargo-deb --locked
-cargo deb
+zfetch                                       # Default terminal view
+zfetch --no-logo --no-color                  # Plain output
+zfetch --layout compact --preset minimal     # Minimal layout
+zfetch --layout classic                      # Classic layout
+zfetch --layout detailed --hardware-details  # Extended hardware details
+zfetch --only os,kernel,cpu,memory           # Select modules
+zfetch --exclude disk,battery                # Skip modules
+zfetch --theme nord                          # Choose an ANSI theme
+zfetch --list-themes                         # List available themes
+zfetch --list-modules                        # List modules
+zfetch --format json                         # Machine-readable JSON
+zfetch --privacy                             # Redact selected personal information
+zfetch --privacy --export report.txt         # Private text report
+zfetch --privacy --format json --export report.json
+zfetch --check-update                        # Check GitHub for a newer release
+zfetch --update                              # Offer compatible Debian package update
 ```
 
-The resulting `.deb` is written under `target/debian/`. The release preparation script in this repository also verifies package metadata, the packaged binary, license notices, and a SHA-256 checksum:
-
-```bash
-bash scripts/build-deb-v0.3.0.sh
-```
-
-The script expects `cargo-deb` to be discoverable on `PATH` (commonly `$HOME/.cargo/bin`). It does not install the package or publish a release.
-
-## Command-line usage
-
-### Common commands
-
-```bash
-zfetch                                             # Default terminal display
-zfetch --no-logo --no-color                        # Plain terminal output
-zfetch --layout compact --preset minimal           # Small terminal view
-zfetch --layout classic                            # Standard logo + information layout
-zfetch --layout detailed                           # Extended hardware details
-zfetch --only os,kernel,cpu,memory                 # Detect selected modules only
-zfetch --exclude disk,battery                      # Skip selected modules
-zfetch --theme nord                                # Apply a theme
-zfetch --list-themes                               # Show available ANSI themes
-zfetch --list-modules                              # Show module identifiers
-zfetch --logo ~/.config/zfetch/my-logo.txt         # Custom ASCII artwork
-zfetch --check-update                              # Query latest stable GitHub Release
-```
-
-### CLI reference
+### Common CLI options
 
 | Option | Description |
 | --- | --- |
-| `-h`, `--help` | Display command help |
-| `-V`, `--version` | Display zfetch version |
-| `--format terminal\|json` | Select terminal output (default) or JSON |
-| `--only <MODULES>` | Detect and display only comma-separated module names |
-| `--exclude <MODULES>` | Skip comma-separated module names |
-| `--list-modules` | Show valid module names |
-| `--layout compact\|classic\|detailed` | Select terminal layout (default: classic) |
-| `--preset minimal\|default\|full` | Choose a module preset |
-| `--theme <NAME>` | Select a built-in ANSI theme |
-| `--list-themes` | Show themes with ANSI color previews |
-| `--hardware-details` | Enable optional CPU, GPU, display, and battery details |
-| `--logo <FILE>` | Use custom ASCII logo file |
-| `--no-logo` | Disable ASCII logo |
-| `--logo-align top\|center\|bottom` | Align the ASCII logo |
-| `--no-color` | Disable ANSI color output |
-| `--config <FILE>` | Load a custom JSONC configuration |
-| `--init-config` | Create an example configuration without overwriting an existing file |
-| `--validate-config` | Validate the default config or one supplied with `--config` |
-| `--privacy` | Redact selected personal system information |
-| `--export <FILE>` | Export a system report without overwriting an existing file |
-| `--check-update` | Check the latest stable GitHub Release; no installation |
-| `--update` | Check for a compatible update and offer an interactive `.deb` upgrade |
+| `-h`, `--help` | Display help |
+| `-V`, `--version` | Display version |
+| `--format terminal\|json` | Choose terminal or JSON output |
+| `--only <MODULES>` / `--exclude <MODULES>` | Select or skip comma-separated modules |
+| `--list-modules` | List supported module names |
+| `--layout compact\|classic\|detailed` | Select terminal layout |
+| `--preset minimal\|default\|full` | Select module preset |
+| `--theme <NAME>` / `--list-themes` | Apply/list ANSI themes |
+| `--hardware-details` | Request extended hardware information |
+| `--logo <FILE>` / `--no-logo` | Custom ASCII logo or no logo |
+| `--logo-align top\|center\|bottom` | ASCII artwork alignment |
+| `--no-color` | Disable terminal colors |
+| `--config <FILE>` | Read a custom JSONC config |
+| `--init-config` / `--validate-config` | Create/validate configuration |
+| `--privacy` | Redact selected sensitive system data |
+| `--export <FILE>` | Export to a new private file (no overwrite) |
+| `--check-update` / `--update` | On-demand release check / compatible Debian update |
 
-Use `zfetch --help` for the authoritative command syntax of the installed build.
+Use `zfetch --help` for authoritative syntax. Some combinations are intentionally invalid, including `--only` with `--exclude`, `--logo` with `--no-logo`, and JSON output with presentation-only compact or detailed layouts.
 
-`--only` and `--exclude` cannot be combined. `--logo` and `--no-logo` are mutually exclusive. `--layout compact` and `--layout detailed` are terminal-only and cannot be combined with `--format json`.
-
-### JSON output
+## JSON output and report export
 
 ```bash
 zfetch --format json --only os,kernel,cpu,memory | python3 -m json.tool
-zfetch --format json --only cpu,gpu,display,battery --hardware-details
+zfetch --format json --hardware-details
+zfetch --privacy --format json --export my-system-report.json
 ```
 
-Example JSON structure (illustrative values):
+Example JSON excerpt:
 
 ```json
 {
   "schema_version": 1,
-  "zfetch_version": "0.3.0",
+  "zfetch_version": "0.4.0",
   "identity": {
-    "username": "user",
-    "hostname": "linux-pc"
+    "username": "hidden",
+    "hostname": "hidden"
   },
   "system": {
-    "os": "Ubuntu 26.04.1 LTS",
-    "kernel": "7.0.0-38-generic"
-  },
-  "hardware": {
-    "cpu": "11th Gen Intel Core i5-1145G7",
-    "memory": "8.36 GiB / 14.86 GiB"
+    "os": "Linux distribution",
+    "kernel": "Linux kernel version"
   }
 }
 ```
 
-JSON output contains no ASCII logos or terminal color codes. It uses schema version `1`. Optional objects such as `cpu_details`, `gpu_details`, `display_details`, and `battery_details` are included when `--hardware-details` is enabled **and** the underlying system provides the data. Memory is currently a formatted string, while disk entries expose numeric byte counters. Do not rely on missing hardware fields being present.
+The example is illustrative. JSON schema version 1 includes more fields, and optional hardware telemetry depends on hardware availability. For private reports, prefer `--privacy --export` rather than redirecting standard output: the built-in exporter creates a new file with `0600` permissions and refuses to overwrite an existing file or symlink. Privacy Mode redacts selected values; review reports before sharing because it is not a comprehensive anonymization guarantee.
 
-JSON does not accept presentation-only detailed or compact layouts. For equivalent detail use `--format json --hardware-details` without `--layout detailed`.
+## Automatic distro logos and customization
 
-## Linux distribution logos
+zfetch reads `/etc/os-release` and selects an embedded ASCII logo using the distribution ID, distribution-family fallback, or a generic Linux fallback. The logo database is compiled into the Rust binary, so normal startup does not depend on external logo files.
 
-zfetch detects the distribution using `/etc/os-release` and displays a matching built-in ASCII logo when no custom logo is configured. The embedded logo database includes recognizable artwork for popular distributions such as Ubuntu, Debian, Linux Mint, Fedora, Arch Linux, and others. Distribution-family fallback and a generic Linux fallback are available when appropriate.
+Selection priority: explicit `--logo` option, custom logo from JSONC, automatically detected distribution logo, then the generic fallback. `--no-logo` disables artwork entirely.
 
-Logo selection priority:
-
-1. Explicit `--logo <FILE>` on the command line.
-2. Custom logo specified in JSONC configuration.
-3. Automatically detected distribution logo.
-4. Generic Linux fallback.
-
-`--no-logo` disables logos regardless of the selected artwork. Custom ASCII artwork is preserved when upgrading the Debian package because it lives in user configuration, not the packaged binary.
-
-### Custom ASCII logo
+Your existing custom ASCII artwork can be kept under `~/.config/zfetch/`:
 
 ```bash
 mkdir -p ~/.config/zfetch
@@ -250,26 +222,19 @@ cp /path/to/my-logo.txt ~/.config/zfetch/my-logo.txt
 zfetch --logo ~/.config/zfetch/my-logo.txt
 ```
 
-To select a custom logo by default, set `logo.source` in `config.jsonc` as shown below. Omit `source` when you want automatic distro detection.
-
-## JSONC configuration
-
-zfetch reads configuration from `$XDG_CONFIG_HOME/zfetch/config.jsonc`, or `~/.config/zfetch/config.jsonc` when `XDG_CONFIG_HOME` is unset. If no config exists, built-in defaults are used.
-
-Create a default file without overwriting an existing one:
+zfetch reads `$XDG_CONFIG_HOME/zfetch/config.jsonc`, or `~/.config/zfetch/config.jsonc` when `XDG_CONFIG_HOME` is unset. Generate or validate the configuration:
 
 ```bash
 zfetch --init-config
 zfetch --validate-config
 ```
 
-Example configuration:
+Example JSONC settings:
 
 ```jsonc
 {
   "logo": {
     "enabled": true,
-    "source": "~/.config/zfetch/my-logo.txt",
     "align": "center"
   },
   "theme": {
@@ -282,73 +247,26 @@ Example configuration:
   "display": {
     "show_efi": false,
     "show_percentage": true
-  },
-  "modules": {
-    "system": [
-      "os", "kernel", "arch", "shell", "de", "session", "wm", "terminal", "packages"
-    ],
-    "hardware": [
-      "host", "bios", "display", "cpu", "gpu", "memory", "swap",
-      "disk", "local_ip", "battery", "uptime"
-    ]
   }
 }
 ```
 
-Make sure the custom logo file exists before enabling `logo.source`. For **automatic distro logos**, remove the `"source"` property from the example. Supported color names are `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, and `gray`. Built-in themes use these eight named ANSI colors rather than a truecolor palette.
+Without `logo.source`, distro auto-detection remains active. To use your own logo by default, add `"source": "~/.config/zfetch/my-logo.txt"` inside the `logo` object. Config modules also support choosing and ordering detected fields.
 
-Configuration module arrays control visibility and ordering. Unknown or duplicate module names are rejected. CLI filters override the in-memory module selection for the current command without modifying the user's config file.
+Six built-in ANSI themes: `default`, `monochrome`, `nord`, `gruvbox`, `rust`, and `high-contrast`. Layouts: `compact`, `classic`, and `detailed`.
 
-To validate another configuration file:
-
-```bash
-zfetch --validate-config --config /path/to/config.jsonc
-```
-
-## Update Manager
+## Updates
 
 ```bash
-zfetch --check-update  # Check only
-zfetch --update        # Check and offer update
+zfetch --check-update
+zfetch --update
 ```
 
-The updater checks **official stable GitHub Releases on demand**. Ordinary `zfetch` runs do **not** contact GitHub or perform network update checks. If a newer compatible Debian package is available, `--update` can offer an interactive installation path, using release checksum verification and Debian package management. It must not be assumed to upgrade arbitrary installation types.
+Release checks contact the official GitHub Releases API **only on request**. Normal `zfetch` runs do not perform update-network requests. The interactive `--update` installer currently handles compatible **Debian `.deb` installations** with user confirmation and checksum verification. For RPM, Arch, and portable installations, update using your distribution's package manager or replace the portable binary manually. Do not expect zfetch to convert one package format into another.
 
-Review the release source, asset architecture, dependency changes, and checksum before accepting an update. A successful remote update of an older published version to v0.3.0 has not yet been validated end-to-end on every supported system.
+## Build, tests, and performance
 
-## Performance
-
-Measurements from the v0.3.0 Compact build on the development machine (Dell Latitude 3320, Ubuntu 26.04.1 LTS, x86_64):
-
-| Metric | v0.3.0 measurement |
-| --- | ---: |
-| Startup, `--no-logo --no-color` (100 runs) | **8.1 ± 0.9 ms** |
-| Startup with `--hardware-details` in a paired run (100 runs) | **10.3 ± 1.2 ms** |
-| Default command in that paired run (100 runs) | 10.2 ± 2.8 ms |
-| Average maximum resident set size (10 independent runs) | **4,130.8 KiB (~4.03 MiB)** |
-| Compact binary size (measured build) | **1,635,920 bytes (~1.56 MiB)** |
-| Debian package size (verified build) | **592,268 bytes (~578 KiB)** |
-
-These measurements are environment-specific; the hardware-details benchmark was affected by scheduling variability, and the paired difference was not statistically meaningful. The results should not be compared directly with older releases measured under different conditions or configurations.
-
-To reproduce the benchmark (requires `hyperfine` and GNU `time`):
-
-```bash
-cargo build --locked --profile compact
-bash scripts/benchmark-v0.3.0.sh ./target/compact/zfetch
-```
-
-Benchmark output is stored under `target/benchmarks/`. Optional system detection profiling is also available with:
-
-```bash
-ZFETCH_PROFILE=1 ./target/compact/zfetch --no-logo
-```
-
-Profiling writes timings to standard error; parallel tasks may overlap.
-
-## Development and testing
-
-Recommended validation steps:
+Run development checks from the repository root:
 
 ```bash
 cargo fmt --all -- --check
@@ -356,68 +274,50 @@ cargo check --locked
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 cargo build --locked --profile compact
-python3 scripts/smoke-v0.3.0.py ./target/compact/zfetch
+./target/compact/zfetch --version
 ```
 
-The v0.3.0 release-candidate source passed **63 unit tests** and **9 offline smoke-test groups** on the development machine. The repository also includes a GitHub Actions CI workflow to run automated checks; its remote status should be verified separately after pushing changes.
+The v0.4.0 development build passed **80 Rust unit tests**, offline CLI smoke checks, and GitHub Actions builds for Debian, RPM, Arch, and static musl packaging. Performance depends on system load, enabled modules, kernel interfaces, and configuration. Prefer paired, repeatable benchmarks when comparing against other tools.
 
-zfetch uses `/proc`, `/sys`, filesystem metadata, Linux interfaces, and selected D-Bus services on supported GNOME desktops. Detection modules can run concurrently; disabled modules are not collected unnecessarily. Optional telemetry is queried only when requested.
+## Compatibility notes
 
-Additional resources: [CLI Reference](docs/CLI-v0.3.0.md), [Release Checklist](docs/SPRINT04-RELEASE.md), and [Release Notes](docs/RELEASE-NOTES-v0.3.0.md).
+- **Debian `.deb`:** built against Ubuntu 22.04 with GLIBC 2.35 target. The package additionally declares runtime dependencies through Debian packaging metadata.
+- **RPM and GNU portable:** built against Rocky Linux 9 with GLIBC 2.34 target. GNU portable builds dynamically link to system libraries.
+- **Static musl:** no dynamic interpreter or required shared libraries in CI checks; a compatible CPU architecture and Linux kernel are still required.
+- **Arch package:** built for x86_64 using Arch Linux packaging tools. Package availability does not automatically imply support for every Arch derivative or older system snapshot.
+- **Runtime detection:** filesystem, `/proc`, `/sys`, D-Bus, drivers, and package databases differ by distro; unavailable fields may be omitted.
+- **No AppImage release:** zfetch is a CLI tool. It can count existing AppImage files on supported layouts, but AppImage is not a distribution format provided by this release.
 
-## Compatibility and limitations
+## Troubleshooting and removal
 
-- The distributed `.deb` currently targets **amd64** with Debian-compatible package management and `libc6 >= 2.39`.
-- Primary testing has been on **Ubuntu 26.04.1 LTS**, GNOME 50.1, Wayland, and Intel Iris Xe graphics; broader Linux support remains a development goal.
-- Some desktop, GPU, display, and battery fields depend on driver or sysfs/D-Bus availability and may be absent.
-- The terminal layout can become wide when detailed CPU/GPU information is shown. Use compact mode or a wider terminal if necessary.
-- JSON schema version 1 is not a full numeric hardware inventory: for example, memory usage remains a formatted string.
-- Built-in themes use a limited ANSI named-color palette, not 24-bit RGB truecolor themes.
-
-## Troubleshooting
-
-**`zfetch: command not found`** — Check the installation and path:
+Check the installed executable and configuration:
 
 ```bash
-dpkg-query -W zfetch
 command -v zfetch
-```
-
-**Invalid JSONC configuration** — Validate it before running normal output:
-
-```bash
+zfetch --version
 zfetch --validate-config
 ```
 
-**JSON parser receives no data** — Do not combine `--format json` with `--layout compact` or `--layout detailed`. Use `--hardware-details` to add hardware data to JSON.
+If a package does not install, inspect architecture and runtime dependencies rather than forcing installation. If hardware information is missing, verify kernel and driver interfaces. If the update manager cannot find a compatible package, download the matching release asset manually.
 
-**Missing hardware detail** — Verify that your Linux kernel and drivers expose the requested sysfs or EDID data; unavailable fields are intentionally omitted rather than invented.
-
-**Release update unavailable** — Confirm that a newer stable GitHub Release contains a compatible Debian asset and a valid checksum file. Manually downloading from [Releases](https://github.com/azislamayuda/zfetch/releases) remains an option.
-
-## Uninstallation
+Remove installations using the package manager that installed them:
 
 ```bash
-sudo apt remove zfetch
+sudo apt remove zfetch     # Debian and Ubuntu
+sudo dnf remove zfetch     # RPM distributions using DNF
+sudo pacman -R zfetch      # Arch Linux
 ```
 
-User-maintained files in `~/.config/zfetch/` are not removed by this command. They can be retained for later installations.
-
-## Roadmap
-
-Completed through v0.3.0: native system detection, JSONC configuration, automatic distro ASCII logos, custom artwork, interactive update checking, JSON output, CLI module selection, layouts, themes, optional hardware details, and release validation tooling.
-
-Future priorities include broader distro/architecture support, improved terminal-width handling, more structured numeric JSON fields, expanded device testing, and continued performance optimization.
+For a portable installation, remove only the directory or binary you extracted. User-maintained configuration under `~/.config/zfetch/` is preserved unless you delete it yourself.
 
 ## Contributing
 
-Contributions, compatibility reports, bug fixes, documentation improvements, and hardware detection enhancements are welcome. Please open an [issue](https://github.com/azislamayuda/zfetch/issues) or [pull request](https://github.com/azislamayuda/zfetch/pulls). Before submitting code, run Rustfmt, Clippy, the unit tests, and the smoke tests.
+Bug reports, Linux distribution compatibility results, hardware detection improvements, documentation updates, and pull requests are welcome. Please run Rustfmt, Clippy, and the unit tests before submitting changes.
+
+[Open an issue](https://github.com/azislamayuda/zfetch/issues) · [Pull requests](https://github.com/azislamayuda/zfetch/pulls)
 
 ## License and acknowledgments
 
-zfetch is distributed under the [MIT License](LICENSE).
+zfetch is distributed under the [MIT License](LICENSE). Some embedded distribution ASCII logos are adapted from Fastfetch artwork; notices and attribution are included in [Third-Party Logo Notices](docs/THIRD_PARTY_LOGOS.md) and the [Fastfetch MIT License](docs/licenses/fastfetch-MIT.txt). Distribution identities remain associated with their respective projects.
 
-Some built-in Linux distribution ASCII logos are adapted from Fastfetch artwork. Their MIT license and attribution are included in [Third-Party Logo Notices](docs/THIRD_PARTY_LOGOS.md) and [Fastfetch MIT License](docs/licenses/fastfetch-MIT.txt). Distribution identities remain associated with their respective projects.
-
-**Created by [Azis Lamayuda](https://github.com/azislamayuda)**  
-**Repository:** https://github.com/azislamayuda/zfetch
+**Created by [Azis Lamayuda](https://github.com/azislamayuda)** · [GitHub repository](https://github.com/azislamayuda/zfetch)
