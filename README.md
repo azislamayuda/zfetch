@@ -8,11 +8,24 @@ Designed as a lightweight alternative to Neofetch and Fastfetch, zfetch favors n
 
 [Releases](https://github.com/azislamayuda/zfetch/releases) · [Issues](https://github.com/azislamayuda/zfetch/issues) · [CLI Guide](docs/CLI-v0.3.0.md) · [License](LICENSE)
 
-**Current version:** `v0.3.0`  
-**Platform:** Linux (`amd64` Debian package available)  
+**Current source version:** `v0.4.0` (release candidate)\
+**Platform:** Linux (x86_64 / ARM64; native and portable builds)\
 **Language:** Rust, edition 2024  
 **License:** MIT  
 **Author:** [Azis Lamayuda](https://github.com/azislamayuda)
+
+## What's new in v0.4.0
+
+- **Cross-distro packaging:** Debian, RPM, Arch Linux, and portable Linux binaries.
+- **Multi-architecture support:** x86_64/amd64 and ARM64/aarch64 where available.
+- **Static musl binaries:** Portable builds without a host GLIBC dependency.
+- **Improved compatibility:** Debian GLIBC 2.35 and RPM GLIBC 2.34 build targets.
+- **Privacy Mode:** `--privacy` redacts selected personal information.
+- **Safe report export:** `--export` saves terminal or JSON reports, prevents overwrites, and uses private file permissions.
+- **Hardware improvements:** Enhanced CPU, GPU, and desktop detection, including ARM64 fallbacks.
+- **Quality assurance:** 80 passing Rust unit tests and automated packaging workflows.
+
+The v0.4.0 release packages are undergoing final verification. Package availability and runtime compatibility depend on the target Linux environment.
 
 ## What's new in v0.3.0
 
@@ -81,25 +94,25 @@ Example extended fields include `4 cores / 8 threads`, `Kernel Base 1.50 GHz`, `
 
 ## Installation
 
-### Debian / Ubuntu (`amd64`)
+### Prebuilt Linux packages
 
-Download these assets from the [GitHub Releases](https://github.com/azislamayuda/zfetch/releases) page for **v0.3.0**:
+The v0.4.0 release candidate supports the following build formats:
 
-- `zfetch_0.3.0-1_amd64.deb`
-- `SHA256SUMS`
+| Linux distribution | Package format | Architecture |
+| --- | --- | --- |
+| Debian, Ubuntu, Linux Mint and derivatives | `.deb` | amd64, arm64 |
+| Fedora, Rocky Linux and compatible systems | `.rpm` | x86_64, aarch64 |
+| Arch Linux and derivatives | `.pkg.tar.zst` | x86_64 |
+| Compatible GNU/Linux systems | `.tar.gz` (GNU) | x86_64, aarch64 |
+| Portable Linux | `.tar.gz` (static musl) | x86_64, aarch64 |
 
-In the download directory, verify the checksum and install or upgrade:
+After release, download the matching asset from [GitHub Releases](https://github.com/azislamayuda/zfetch/releases) and verify its SHA-256 checksum.
 
-```bash
-sha256sum -c SHA256SUMS
-sudo apt install ./zfetch_0.3.0-1_amd64.deb
-zfetch --version
-zfetch
-```
+Install Debian packages using `sudo apt install ./PACKAGE.deb`, RPM packages using the native package manager such as `dnf`, or Arch packages using `pacman -U`.
 
-The Debian package installs the executable at `/usr/bin/zfetch`. The v0.3.0 `amd64` package declares dependencies on `apt`, `coreutils`, `curl`, `dpkg`, and `libc6 (>= 2.39)`. It does not require Rust or Cargo at runtime.
+For portable builds, extract the archive and run its `zfetch` executable. Static musl builds avoid a host GLIBC dependency but still require a compatible Linux kernel and CPU architecture.
 
-The package has been built and its contents, checksum, and simulated upgrade from v0.2.0 validated on Ubuntu 26.04.1 LTS. Wider distribution compatibility and the successful interactive remote-update installation path have not been comprehensively tested.
+The interactive `zfetch --update` installer currently supports compatible Debian package installations. For RPM, Arch, and portable packages, use the appropriate package manager or manual installation method.
 
 ### Build from source
 
@@ -175,6 +188,8 @@ zfetch --check-update                              # Query latest stable GitHub 
 | `--config <FILE>` | Load a custom JSONC configuration |
 | `--init-config` | Create an example configuration without overwriting an existing file |
 | `--validate-config` | Validate the default config or one supplied with `--config` |
+| `--privacy` | Redact selected personal system information |
+| `--export <FILE>` | Export a system report without overwriting an existing file |
 | `--check-update` | Check the latest stable GitHub Release; no installation |
 | `--update` | Check for a compatible update and offer an interactive `.deb` upgrade |
 
