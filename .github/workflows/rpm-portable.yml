@@ -28,8 +28,8 @@ jobs:
     steps:
       - name: Install Rocky Linux build tools
         run: |
-          dnf install -y ca-certificates curl git gcc gcc-c++ make rpm-build rpm \
-            binutils file tar gzip findutils coreutils python3
+          dnf install -y ca-certificates git gcc gcc-c++ make rpm-build rpm \
+            binutils file tar gzip findutils python3
           update-ca-trust
 
       - name: Checkout
