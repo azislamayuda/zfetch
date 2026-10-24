@@ -20,10 +20,12 @@ jobs:
             arch: arm64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+
       - name: Install packaging tool
         run: cargo install cargo-deb --locked
       - name: Validate
@@ -38,7 +40,7 @@ jobs:
           cp target/debian/*.deb dist/
           cd dist
           sha256sum *.deb > "SHA256SUMS-${{ matrix.arch }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: zfetch-deb-${{ matrix.arch }}
           path: dist/*
