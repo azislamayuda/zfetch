@@ -21,8 +21,12 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
+<<<<<<< HEAD
 
       - uses: dtolnay/rust-toolchain@stable
+=======
+      - uses: actions/upload-artifact@v6
+>>>>>>> 0c3a7ecfa9d309012a0ef7eaef98d1060715f617
         with:
           components: clippy, rustfmt
 
