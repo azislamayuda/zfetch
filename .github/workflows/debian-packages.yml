@@ -20,8 +20,8 @@ jobs:
             arch: arm64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v6
+      - uses: actions/upload-artifact@v6
         with:
           components: clippy, rustfmt
       - name: Install packaging tool
