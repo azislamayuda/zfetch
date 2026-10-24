@@ -1,15 +1,19 @@
+
 name: Debian package builds
 
 on:
   workflow_dispatch:
   push:
-    tags: ['v*']
+    tags:
+      - 'v*'
 
 permissions:
   contents: read
 
 jobs:
   package:
+    name: Build Debian package (${{ matrix.arch }})
+
     strategy:
       fail-fast: false
       matrix:
@@ -18,25 +22,27 @@ jobs:
             arch: amd64
           - runner: ubuntu-24.04-arm
             arch: arm64
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v6
-<<<<<<< HEAD
 
-      - uses: dtolnay/rust-toolchain@stable
-=======
-      - uses: actions/upload-artifact@v6
->>>>>>> 0c3a7ecfa9d309012a0ef7eaef98d1060715f617
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
 
       - name: Install packaging tool
         run: cargo install cargo-deb --locked
-      - name: Validate
+
+      - name: Validate Rust source
         run: |
           cargo fmt --all --check
-          cargo clippy --all-targets -- -D warnings
+          cargo clippy --locked --all-targets -- -D warnings
           cargo test --locked
+
       - name: Build Debian package
         run: |
           cargo deb --locked --profile compact
@@ -44,7 +50,9 @@ jobs:
           cp target/debian/*.deb dist/
           cd dist
           sha256sum *.deb > "SHA256SUMS-${{ matrix.arch }}"
-      - uses: actions/upload-artifact@v6
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v6
         with:
           name: zfetch-deb-${{ matrix.arch }}
           path: dist/*
