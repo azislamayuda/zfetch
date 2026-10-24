@@ -20,7 +20,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed git rust cargo python zstd binutils
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Build Rust binary
         run: |
           cargo test --locked
@@ -40,7 +40,7 @@ jobs:
           pacman -Qip dist/*.pkg.tar.zst
           pacman -Qlp dist/*.pkg.tar.zst | grep -F /usr/bin/zfetch
       - name: Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: zfetch-arch-x86_64
           path: dist/*
