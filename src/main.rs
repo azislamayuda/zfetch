@@ -1,3 +1,4 @@
+mod advanced;
 mod cli;
 mod config;
 mod display;
@@ -31,16 +32,46 @@ fn main() -> ExitCode {
                 return ExitCode::from(1);
             }
         }
+        cli::Action::ListModules => advanced::list_modules(),
+        cli::Action::ListThemes => advanced::list_themes(),
+        cli::Action::InitConfig => {
+            if let Err(error) = advanced::init_config() {
+                eprintln!("zfetch: {error}");
+                return ExitCode::from(2);
+            }
+        }
+        cli::Action::ValidateConfig(path) => {
+            if let Err(error) = advanced::validate_config(path.as_deref()) {
+                eprintln!("zfetch: {error}");
+                return ExitCode::from(2);
+            }
+        }
         cli::Action::Run(options) => {
-            let config = match config::Config::load(options.config.as_deref()) {
+            let mut config = match config::Config::load(options.config.as_deref()) {
                 Ok(config) => config,
                 Err(error) => {
                     eprintln!("zfetch: {error}");
                     return ExitCode::from(2);
                 }
             };
-            let info = system::collect(&config);
-            display::render(&info, &options, &config);
+            if let Err(error) = advanced::configure(&mut config, &options) {
+                eprintln!("zfetch: {error}");
+                return ExitCode::from(2);
+            }
+            let mut info = system::collect(&config);
+            advanced::enrich_hardware(&mut info, &config, &options);
+            if options.format == cli::OutputFormat::Json {
+                let data = advanced::json_document(&info, &config);
+                match serde_json::to_string_pretty(&data) {
+                    Ok(json) => println!("{json}"),
+                    Err(error) => {
+                        eprintln!("zfetch JSON: {error}");
+                        return ExitCode::from(1);
+                    }
+                }
+            } else {
+                display::render(&info, &options, &config);
+            }
         }
     }
     ExitCode::SUCCESS

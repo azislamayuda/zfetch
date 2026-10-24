@@ -1,5 +1,17 @@
 # zfetch
 
+## What's new in v0.3.0 (Sprint 01)
+
+- JSON output with `zfetch --format json`.
+- Lazy CLI module filters: `--only`, `--exclude`, and `--list-modules`.
+- Display presets: `--preset minimal|default|full`.
+- ANSI themes: `--theme`, `--list-themes`.
+- Config management: `--init-config` and `--validate-config`.
+- Optional CPU core/thread metadata via `--hardware-details`.
+
+See [v0.3.0 Sprint 01 guide](docs/V0.3.0.md).
+
+
 ## What's new in v0.2.0
 
 - Automatic Linux distribution ASCII logo database (built-in, no startup network).
@@ -16,7 +28,7 @@ A fast, lightweight, and customizable Linux system information tool written in R
 
 zfetch is an open-source command-line application that displays essential system and hardware information with minimal overhead. Built as an alternative to Fastfetch, zfetch focuses on native Linux detection, startup performance, efficient memory usage, and a customizable terminal experience.
 
-**Version:** 0.2.0  
+**Version:** 0.3.0  
 **Platform:** Linux  
 **Language:** Rust (Edition 2024)  
 **License:** MIT  
