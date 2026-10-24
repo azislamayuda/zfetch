@@ -11,8 +11,10 @@ permissions:
 
 jobs:
   build:
-    name: RPM and tarball (${{ matrix.arch }})
+    name: RPM and GNU tarball on Rocky 9 (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    container:
+      image: rockylinux:9
     strategy:
       fail-fast: false
       matrix:
@@ -24,27 +26,49 @@ jobs:
             arch: aarch64
             rpm_arch: aarch64
     steps:
+      - name: Install Rocky Linux build tools
+        run: |
+          dnf install -y ca-certificates curl git gcc gcc-c++ make rpm-build rpm \
+            binutils file tar gzip findutils coreutils python3
+          update-ca-trust
+
       - name: Checkout
         uses: actions/checkout@v5
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - name: Tools
-        run: sudo apt-get update && sudo apt-get install -y rpm file
-      - name: Validate
+
+      - name: Install stable Rust
         run: |
+          curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Validate source
+        run: |
+          rustup component add rustfmt clippy
           cargo fmt --all -- --check
           cargo clippy --locked --all-targets -- -D warnings
           cargo test --locked
-      - name: Build
+
+      - name: Build compact Linux binary
         run: cargo build --locked --profile compact
-      - name: Create RPM and GNU portable tarball
+
+      - name: Enforce RPM and GNU portable GLIBC baseline
+        run: bash packaging/check-glibc.sh target/compact/zfetch 2.34
+
+      - name: Build RPM and GNU tarball
         env:
           PKG_ARCH: ${{ matrix.arch }}
           RPM_ARCH: ${{ matrix.rpm_arch }}
         run: bash packaging/build-rpm-portable.sh
-      - name: Artifact
+
+      - name: Install and smoke-test RPM in Rocky Linux 9
+        run: |
+          dnf install -y ./dist/*.rpm
+          rpm -q zfetch
+          zfetch --version
+          zfetch --no-logo --no-color > /dev/null
+          zfetch --format json --privacy | python3 -m json.tool > /dev/null
+
+      - name: Upload Rocky 9 artifacts
         uses: actions/upload-artifact@v6
         with:
           name: zfetch-rpm-portable-${{ matrix.arch }}
