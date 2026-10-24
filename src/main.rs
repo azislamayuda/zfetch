@@ -2,6 +2,7 @@ mod advanced;
 mod cli;
 mod config;
 mod display;
+mod hardware_ext;
 mod system;
 mod update;
 
@@ -60,8 +61,10 @@ fn main() -> ExitCode {
             }
             let mut info = system::collect(&config);
             advanced::enrich_hardware(&mut info, &config, &options);
+            let telemetry = hardware_ext::enrich(&mut info, &config, &options);
             if options.format == cli::OutputFormat::Json {
-                let data = advanced::json_document(&info, &config);
+                let mut data = advanced::json_document(&info, &config);
+                hardware_ext::augment_json(&mut data, &telemetry);
                 match serde_json::to_string_pretty(&data) {
                     Ok(json) => println!("{json}"),
                     Err(error) => {
