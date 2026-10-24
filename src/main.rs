@@ -3,6 +3,7 @@ mod cli;
 mod config;
 mod display;
 mod hardware_ext;
+mod report;
 mod system;
 mod update;
 
@@ -66,15 +67,32 @@ fn main() -> ExitCode {
             let mut info = system::collect(&config);
             advanced::enrich_hardware(&mut info, &config, &options);
             let telemetry = hardware_ext::enrich(&mut info, &config, &options);
+            // Redact before rendering/serialization, never as a terminal-only filter.
+            let sensitive = options.privacy.then(|| report::protect_info(&mut info));
             if options.format == cli::OutputFormat::Json {
                 let mut data = advanced::json_document(&info, &config);
                 hardware_ext::augment_json(&mut data, &telemetry);
+                if let Some(ref sensitive) = sensitive {
+                    report::protect_json(&mut data, sensitive);
+                }
                 match serde_json::to_string_pretty(&data) {
-                    Ok(json) => println!("{json}"),
+                    Ok(json) => {
+                        if let Err(error) = report::emit(&json, options.export.as_deref()) {
+                            eprintln!("zfetch export: {error}");
+                            return ExitCode::from(1);
+                        }
+                    }
                     Err(error) => {
                         eprintln!("zfetch JSON: {error}");
                         return ExitCode::from(1);
                     }
+                }
+            } else if let Some(path) = options.export.as_deref() {
+                // Plain text, no ANSI escapes or external ASCII logo in saved reports.
+                let text = display::plain_report(&info, &config);
+                if let Err(error) = report::emit(&text, Some(path)) {
+                    eprintln!("zfetch export: {error}");
+                    return ExitCode::from(1);
                 }
             } else {
                 if options.layout == cli::LayoutMode::Compact {

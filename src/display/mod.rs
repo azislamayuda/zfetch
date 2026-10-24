@@ -147,3 +147,20 @@ pub fn render(info: &SystemInfo, options: &Options, config: &Config) {
 
     println!();
 }
+
+/// Serialize the existing classic layout to plain text for offline reports.
+/// Exports intentionally omit colored output and user-supplied ASCII artwork.
+pub fn plain_report(info: &SystemInfo, config: &Config) -> String {
+    let mut result = String::new();
+    for line in layout::build(info, config) {
+        let text = match line {
+            Line::Title(value) | Line::Subtitle(value) => value,
+            Line::Heading(label) => format!("{label} {}", "─".repeat(28)),
+            Line::Item { label, value, .. } => format!("{label:<11} {value}"),
+            Line::Spacer => String::new(),
+        };
+        result.push_str(&text);
+        result.push('\n');
+    }
+    result
+}

@@ -46,6 +46,8 @@ pub struct Options {
     pub layout: LayoutMode,
     pub theme: Option<String>,
     pub hardware_details: bool,
+    pub privacy: bool,
+    pub export: Option<PathBuf>,
 }
 
 pub enum Action {
@@ -120,6 +122,18 @@ fn parse_args<I: Iterator<Item = String>>(mut args: I) -> Result<Action, String>
             }
             "--hardware-details" => {
                 options.hardware_details = true;
+                ordinary_options = true;
+            }
+            "--privacy" => {
+                options.privacy = true;
+                ordinary_options = true;
+            }
+            "--export" => {
+                let value = args.next().ok_or("--export requires a file path")?;
+                if value.is_empty() || value.starts_with("--") {
+                    return Err("--export requires a non-empty file path".into());
+                }
+                options.export = Some(PathBuf::from(value));
                 ordinary_options = true;
             }
             "--logo" => {
@@ -262,6 +276,8 @@ pub fn print_help() {
     println!("      --theme <NAME>      Select a built-in ANSI theme");
     println!("      --list-themes       Show available themes");
     println!("      --hardware-details Append CPU core/thread details");
+    println!("      --privacy          Hide identity, local IP and personal mount paths");
+    println!("      --export <FILE>    Create a new report (.txt or use --format json)");
     println!("      --init-config       Create an example config without overwrite");
     println!("      --validate-config   Validate JSONC configuration");
     println!("      --check-update      Check latest stable GitHub Release");
@@ -274,6 +290,25 @@ mod tests {
     fn parse(input: &[&str]) -> Result<Action, String> {
         parse_args(input.iter().map(|s| s.to_string()))
     }
+    #[test]
+    fn sprint04_privacy_and_export_parsing() {
+        match parse(&["--privacy", "--export", "report.txt"]).unwrap() {
+            Action::Run(options) => {
+                assert!(options.privacy);
+                assert_eq!(
+                    options.export.as_deref(),
+                    Some(std::path::Path::new("report.txt"))
+                );
+            }
+            _ => panic!("expected Run"),
+        }
+        assert!(parse(&["--export"]).is_err());
+        assert!(parse(&["--export", "--privacy"]).is_err());
+        assert!(parse(&["--update", "--privacy"]).is_err());
+        assert!(parse(&["--export", "report.json", "--format", "json"]).is_ok());
+        assert!(parse(&["--privacy", "--only", "os,cpu"]).is_ok());
+    }
+
     #[test]
     fn sprint03_layout_parsing() {
         for (name, expected) in [
