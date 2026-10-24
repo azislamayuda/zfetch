@@ -1,0 +1,18 @@
+# Maintainer: Azis Lamayuda
+pkgname=zfetch
+pkgver=0.3.0
+pkgrel=1
+pkgdesc='Lightweight Linux system information tool written in Rust'
+arch=('x86_64')
+url='https://github.com/azislamayuda/zfetch'
+license=('MIT')
+depends=('glibc')
+source=()
+sha256sums=()
+
+package() {
+  local repo_root="${startdir}/../.."
+  install -Dm755 "${repo_root}/target/compact/zfetch" "${pkgdir}/usr/bin/zfetch"
+  install -Dm644 "${repo_root}/LICENSE" "${pkgdir}/usr/share/licenses/zfetch/LICENSE"
+  install -Dm644 "${repo_root}/README.md" "${pkgdir}/usr/share/doc/zfetch/README.md"
+}

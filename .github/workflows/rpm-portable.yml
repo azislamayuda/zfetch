@@ -1,0 +1,53 @@
+name: RPM and portable Linux builds
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: RPM and tarball (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+            rpm_arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+            rpm_arch: aarch64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y rpm file
+      - name: Validate
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+      - name: Build
+        run: cargo build --locked --profile compact
+      - name: Create RPM and GNU portable tarball
+        env:
+          PKG_ARCH: ${{ matrix.arch }}
+          RPM_ARCH: ${{ matrix.rpm_arch }}
+        run: bash packaging/build-rpm-portable.sh
+      - name: Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zfetch-rpm-portable-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14

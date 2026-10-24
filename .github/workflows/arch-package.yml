@@ -1,0 +1,48 @@
+name: Arch Linux package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  arch:
+    name: Build Arch x86_64
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:base-devel
+    steps:
+      - name: Install CI dependencies
+        run: |
+          pacman -Syu --noconfirm --needed git rust cargo python zstd binutils
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build Rust binary
+        run: |
+          cargo test --locked
+          cargo build --locked --profile compact
+      - name: Sync package version
+        run: python packaging/arch/update-pkgver.py
+      - name: Package with makepkg
+        run: |
+          useradd -m -s /bin/bash builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- bash -c 'cd "$1" && makepkg --nodeps --noconfirm --skipinteg' _ "$GITHUB_WORKSPACE/packaging/arch"
+          mkdir -p dist
+          cp packaging/arch/*.pkg.tar.zst dist/
+          cd dist && sha256sum *.pkg.tar.zst > SHA256SUMS-x86_64-arch
+      - name: Verify package
+        run: |
+          pacman -Qip dist/*.pkg.tar.zst
+          pacman -Qlp dist/*.pkg.tar.zst | grep -F /usr/bin/zfetch
+      - name: Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zfetch-arch-x86_64
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
