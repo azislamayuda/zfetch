@@ -30,14 +30,14 @@ defaults:
 jobs:
   validate:
     name: Validate version and release state
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       version: ${{ steps.check.outputs.version }}
       tag: ${{ steps.check.outputs.tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Check version, tag, release and notes
         id: check
@@ -118,7 +118,7 @@ jobs:
             ca-certificates curl git build-essential pkg-config file binutils python3 python3.11
 
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install stable Rust
         run: |
@@ -169,7 +169,7 @@ jobs:
           zfetch --format json --privacy | python3 -m json.tool > /dev/null
 
       - name: Upload Debian package
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: zfetch-deb-${{ matrix.arch }}
           path: dist/*
@@ -205,7 +205,7 @@ jobs:
           update-ca-trust
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install stable Rust
         run: |
@@ -251,7 +251,7 @@ jobs:
           zfetch --format json --privacy | python3 -m json.tool > /dev/null
 
       - name: Upload Rocky 9 artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: zfetch-rpm-portable-${{ matrix.arch }}
           path: dist/*
@@ -277,7 +277,7 @@ jobs:
       VERSION: ${{ needs.validate.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install system build dependencies
         run: |
@@ -315,7 +315,7 @@ jobs:
           test -f "dist/zfetch-${VERSION}-linux-${PKG_ARCH}-musl.tar.gz"
 
       - name: Upload static portable artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: zfetch-musl-${{ matrix.arch }}
           path: dist/*musl*
@@ -336,7 +336,7 @@ jobs:
         run: pacman -Syu --noconfirm --needed git rust cargo python zstd binutils
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Build Rust binary
         run: |
@@ -356,9 +356,11 @@ jobs:
           useradd -m -s /bin/bash builder
           chown -R builder:builder "$GITHUB_WORKSPACE"
           runuser -u builder -- bash -c 'cd "$1" && makepkg --nodeps --noconfirm --skipinteg' _ "$GITHUB_WORKSPACE/packaging/arch"
-          mkdir -p dist
-          cp packaging/arch/*.pkg.tar.zst dist/
-          test -f "dist/zfetch-${VERSION}-1-x86_64.pkg.tar.zst"
+          mkdir -p dist debug-dist
+          # makepkg's default 'debug' option also builds zfetch-debug-*: keep it out of
+          # dist/ (release set) and upload it separately as the arch-debug artifact.
+          cp "packaging/arch/zfetch-${VERSION}-1-x86_64.pkg.tar.zst" dist/
+          find packaging/arch -maxdepth 1 -name 'zfetch-debug-*.pkg.tar.zst' -exec cp -t debug-dist/ {} +
           cd dist
           sha256sum -- *.pkg.tar.zst > SHA256SUMS-x86_64-arch
 
@@ -369,17 +371,26 @@ jobs:
           pacman -Qlp dist/*.pkg.tar.zst | grep -F /usr/bin/zfetch
 
       - name: Upload Arch package
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: zfetch-arch-x86_64
           path: dist/*
           if-no-files-found: error
           retention-days: 14
 
+      # Not a release asset; the name does not match the zfetch-* download pattern.
+      - name: Upload Arch debug package (not released)
+        uses: actions/upload-artifact@v7
+        with:
+          name: arch-debug
+          path: debug-dist/*
+          if-no-files-found: warn
+          retention-days: 7
+
   checksums:
     name: Collect assets and SHA256SUMS
     needs: [validate, build-deb, build-rpm, build-musl, build-arch]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       sums: ${{ steps.sums.outputs.sums }}
@@ -387,7 +398,7 @@ jobs:
       VERSION: ${{ needs.validate.outputs.version }}
     steps:
       - name: Download build artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: zfetch-*
           path: assets
@@ -398,6 +409,8 @@ jobs:
         working-directory: assets
         run: |
           set -euo pipefail
+          # Byte-order collation so sort and comm always agree, whatever the runner locale.
+          export LC_ALL=C
           # Each build job wrote SHA256SUMS-<arch>; verify them, then drop them.
           shopt -s nullglob
           per_job=(SHA256SUMS-*)
@@ -407,6 +420,12 @@ jobs:
           fi
           for f in "${per_job[@]}"; do sha256sum -c "$f"; done
           rm -f -- "${per_job[@]}"
+          # Debug packages are never release assets, whatever their exact name.
+          mapfile -t debug_files < <(find . -mindepth 1 -maxdepth 1 -name '*-debug-*' -printf '%f\n' | sort)
+          if (( ${#debug_files[@]} )); then
+            echo "::notice::Excluded from release set: ${debug_files[*]}"
+            rm -f -- "${debug_files[@]}"
+          fi
           expected="$(printf '%s\n' \
             "zfetch_${VERSION}-1_amd64.deb" \
             "zfetch_${VERSION}-1_arm64.deb" \
@@ -418,9 +437,30 @@ jobs:
             "zfetch-${VERSION}-linux-x86_64-musl.tar.gz" \
             "zfetch-${VERSION}-linux-aarch64-musl.tar.gz" | sort)"
           actual="$(find . -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)"
-          if [[ "$actual" != "$expected" ]]; then
-            echo "::error::Release asset set differs from the expected nine files"
-            diff <(echo "$expected") <(echo "$actual") || true
+          missing="$(comm -23 <(echo "$expected") <(echo "$actual"))"
+          unexpected="$(comm -13 <(echo "$expected") <(echo "$actual"))"
+          if [[ -n "$missing" || -n "$unexpected" ]]; then
+            echo "::error::Release asset set differs from the expected nine files. Missing: ${missing//$'\n'/ } Unexpected: ${unexpected//$'\n'/ }"
+            {
+              echo '## Release asset set check failed'
+              echo
+              echo '### Missing (expected but not built)'
+              echo '```'
+              echo "${missing:-none}"
+              echo '```'
+              echo '### Unexpected (built but not in the release set)'
+              echo '```'
+              echo "${unexpected:-none}"
+              echo '```'
+              echo '### Expected'
+              echo '```'
+              echo "$expected"
+              echo '```'
+              echo '### Actual (after excluding debug packages)'
+              echo '```'
+              echo "$actual"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
           mapfile -t files <<< "$expected"
@@ -433,7 +473,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Upload release assets
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: release-assets
           path: assets/*
@@ -444,7 +484,7 @@ jobs:
     name: Create tag and DRAFT release
     needs: [validate, checksums]
     if: ${{ !inputs.dry_run }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
@@ -456,10 +496,10 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download release assets
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: release-assets
           path: release-assets
@@ -509,7 +549,7 @@ jobs:
     name: Summary
     needs: [validate, build-deb, build-rpm, build-musl, build-arch, checksums, publish]
     if: ${{ always() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Write job summary
