@@ -1,0 +1,557 @@
+name: Release
+
+# One manual pipeline: build all nine packages, checksum them, and (only when
+# dry_run is false) create tag v<version> plus a DRAFT GitHub release.
+# The owner reviews and publishes the draft by hand. Never triggered by push/tags.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, must equal Cargo.toml (e.g. 0.5.0)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Build and validate only; no tag, no release'
+        required: true
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  validate:
+    name: Validate version and release state
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check version, tag, release and notes
+        id: check
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$INPUT_VERSION"
+          tag="v$version"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '$version' is not X.Y.Z"
+            exit 1
+          fi
+          cargo_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
+          if [[ "$cargo_version" != "$version" ]]; then
+            echo "::error::Input version $version does not match Cargo.toml version $cargo_version"
+            exit 1
+          fi
+          pkgver="$(sed -n 's/^pkgver=//p' packaging/arch/PKGBUILD | head -n 1)"
+          if [[ "$pkgver" != "$version" ]]; then
+            echo "::error::packaging/arch/PKGBUILD pkgver=$pkgver does not match $version (run: python3 packaging/arch/update-pkgver.py)"
+            exit 1
+          fi
+          # [package.metadata.deb] has no version field; cargo-deb uses Cargo.toml version + revision 1.
+          if sed -n '/^\[package.metadata.deb\]/,/^\[/p' Cargo.toml | grep -qE '^(version|revision)\s*='; then
+            echo "::error::[package.metadata.deb] sets version/revision; asset names would no longer be <ver>-1"
+            exit 1
+          fi
+          fatal=false
+          [[ "$DRY_RUN" == "true" ]] || fatal=true
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            if $fatal; then echo "::error::Tag $tag already exists on origin"; exit 1; fi
+            echo "::warning::Tag $tag already exists on origin (dry run continues)"
+          fi
+          # A contents:read token cannot see drafts; publish re-checks with write access.
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            if $fatal; then echo "::error::Release $tag already exists"; exit 1; fi
+            echo "::warning::Release $tag already exists (dry run continues)"
+          fi
+          if [[ ! -f "docs/RELEASE-NOTES-v$version.md" ]]; then
+            if $fatal; then echo "::error::docs/RELEASE-NOTES-v$version.md is missing"; exit 1; fi
+            echo "::warning::docs/RELEASE-NOTES-v$version.md is missing; a real run would fail"
+          fi
+          if $fatal && [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Real releases must run from main (got $GITHUB_REF)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Validated $tag (dry_run=$DRY_RUN) at $GITHUB_SHA"
+
+  build-deb:
+    name: Debian package on Ubuntu 22.04 (${{ matrix.arch }})
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    container:
+      image: ubuntu:22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - name: Install Ubuntu 22.04 build tools
+        run: |
+          set -euo pipefail
+          apt-get update
+          # python3.11 only for the smoke script (tomllib); 22.04's python3 is 3.10.
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates curl git build-essential pkg-config file binutils python3 python3.11
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb --locked
+
+      - name: Validate Rust source
+        run: |
+          set -euo pipefail
+          rustup component add clippy rustfmt
+          cargo fmt --all -- --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+
+      - name: Build Debian package
+        env:
+          DEB_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          cargo deb --locked --profile compact
+          bash packaging/check-glibc.sh target/compact/zfetch 2.35
+          mkdir -p dist
+          cp target/debian/*.deb dist/
+          test -f "dist/zfetch_${VERSION}-1_${DEB_ARCH}.deb"
+          cd dist
+          sha256sum -- *.deb > "SHA256SUMS-${DEB_ARCH}"
+
+      - name: Offline smoke test (native runner)
+        run: python3.11 scripts/smoke-v0.3.0.py target/compact/zfetch
+
+      - name: Validate Debian package and installation
+        env:
+          EXPECTED_DEB_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          deb_file="dist/zfetch_${VERSION}-1_${EXPECTED_DEB_ARCH}.deb"
+          test "$(dpkg-deb -f "$deb_file" Package)" = zfetch
+          test "$(dpkg-deb -f "$deb_file" Version)" = "${VERSION}-1"
+          test "$(dpkg-deb -f "$deb_file" Architecture)" = "$EXPECTED_DEB_ARCH"
+          apt-get install -y "./$deb_file"
+          zfetch --version | grep -Fx "zfetch $VERSION"
+          zfetch --no-logo --no-color > /dev/null
+          zfetch --format json --privacy | python3 -m json.tool > /dev/null
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v6
+        with:
+          name: zfetch-deb-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  build-rpm:
+    name: RPM and GNU tarball on Rocky 9 (${{ matrix.arch }})
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    container:
+      image: rockylinux:9
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+            rpm_arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+            rpm_arch: aarch64
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - name: Install Rocky Linux build tools
+        run: |
+          set -euo pipefail
+          # python3.11 only for the smoke script (tomllib); Rocky 9's python3 is 3.9.
+          dnf install -y ca-certificates git gcc gcc-c++ make rpm-build rpm \
+            binutils file tar gzip findutils python3 python3.11
+          update-ca-trust
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Validate source
+        run: |
+          set -euo pipefail
+          rustup component add rustfmt clippy
+          cargo fmt --all -- --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+
+      - name: Build compact Linux binary
+        run: cargo build --locked --profile compact
+
+      - name: Enforce RPM and GNU portable GLIBC baseline
+        run: bash packaging/check-glibc.sh target/compact/zfetch 2.34
+
+      - name: Offline smoke test (native runner)
+        run: python3.11 scripts/smoke-v0.3.0.py target/compact/zfetch
+
+      - name: Build RPM and GNU tarball
+        env:
+          PKG_ARCH: ${{ matrix.arch }}
+          RPM_ARCH: ${{ matrix.rpm_arch }}
+        run: |
+          set -euo pipefail
+          bash packaging/build-rpm-portable.sh
+          test -f "dist/zfetch-${VERSION}-1.el9.${RPM_ARCH}.rpm"
+          test -f "dist/zfetch-${VERSION}-linux-${PKG_ARCH}-gnu.tar.gz"
+
+      - name: Install and smoke-test RPM in Rocky Linux 9
+        run: |
+          set -euo pipefail
+          dnf install -y ./dist/*.rpm
+          rpm -q zfetch
+          zfetch --version | grep -Fx "zfetch $VERSION"
+          zfetch --no-logo --no-color > /dev/null
+          zfetch --format json --privacy | python3 -m json.tool > /dev/null
+
+      - name: Upload Rocky 9 artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: zfetch-rpm-portable-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  build-musl:
+    name: Static musl tarball (${{ matrix.arch }})
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+            target: aarch64-unknown-linux-musl
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install system build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y musl-tools binutils file python3
+
+      - name: Install Rust musl target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Test source on native runner
+        run: cargo test --locked
+
+      - name: Build static musl binary
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+          MUSL_TARGET: ${{ matrix.target }}
+        run: cargo build --locked --profile compact --target "$MUSL_TARGET"
+
+      - name: Offline smoke test (native runner)
+        env:
+          MUSL_TARGET: ${{ matrix.target }}
+        run: python3 scripts/smoke-v0.3.0.py "target/$MUSL_TARGET/compact/zfetch"
+
+      - name: Verify static linking, smoke-test and package
+        env:
+          PKG_ARCH: ${{ matrix.arch }}
+          MUSL_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          bash packaging/build-musl-portable.sh
+          test -f "dist/zfetch-${VERSION}-linux-${PKG_ARCH}-musl.tar.gz"
+
+      - name: Upload static portable artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: zfetch-musl-${{ matrix.arch }}
+          path: dist/*musl*
+          if-no-files-found: error
+          retention-days: 14
+
+  build-arch:
+    name: Arch package (x86_64)
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    container:
+      image: archlinux:base-devel
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - name: Install CI dependencies
+        run: pacman -Syu --noconfirm --needed git rust cargo python zstd binutils
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build Rust binary
+        run: |
+          set -euo pipefail
+          cargo test --locked
+          cargo build --locked --profile compact
+
+      - name: Offline smoke test (native runner)
+        run: python scripts/smoke-v0.3.0.py target/compact/zfetch
+
+      - name: Sync package version
+        run: python packaging/arch/update-pkgver.py
+
+      - name: Package with makepkg
+        run: |
+          set -euo pipefail
+          useradd -m -s /bin/bash builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- bash -c 'cd "$1" && makepkg --nodeps --noconfirm --skipinteg' _ "$GITHUB_WORKSPACE/packaging/arch"
+          mkdir -p dist
+          cp packaging/arch/*.pkg.tar.zst dist/
+          test -f "dist/zfetch-${VERSION}-1-x86_64.pkg.tar.zst"
+          cd dist
+          sha256sum -- *.pkg.tar.zst > SHA256SUMS-x86_64-arch
+
+      - name: Verify package
+        run: |
+          set -euo pipefail
+          pacman -Qip dist/*.pkg.tar.zst
+          pacman -Qlp dist/*.pkg.tar.zst | grep -F /usr/bin/zfetch
+
+      - name: Upload Arch package
+        uses: actions/upload-artifact@v6
+        with:
+          name: zfetch-arch-x86_64
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  checksums:
+    name: Collect assets and SHA256SUMS
+    needs: [validate, build-deb, build-rpm, build-musl, build-arch]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      sums: ${{ steps.sums.outputs.sums }}
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v6
+        with:
+          pattern: zfetch-*
+          path: assets
+          merge-multiple: true
+
+      - name: Verify per-job checksums and exact asset list
+        id: sums
+        working-directory: assets
+        run: |
+          set -euo pipefail
+          # Each build job wrote SHA256SUMS-<arch>; verify them, then drop them.
+          shopt -s nullglob
+          per_job=(SHA256SUMS-*)
+          if (( ${#per_job[@]} != 7 )); then
+            echo "::error::Expected 7 per-job checksum files, found ${#per_job[@]}: ${per_job[*]}"
+            exit 1
+          fi
+          for f in "${per_job[@]}"; do sha256sum -c "$f"; done
+          rm -f -- "${per_job[@]}"
+          expected="$(printf '%s\n' \
+            "zfetch_${VERSION}-1_amd64.deb" \
+            "zfetch_${VERSION}-1_arm64.deb" \
+            "zfetch-${VERSION}-1.el9.x86_64.rpm" \
+            "zfetch-${VERSION}-1.el9.aarch64.rpm" \
+            "zfetch-${VERSION}-1-x86_64.pkg.tar.zst" \
+            "zfetch-${VERSION}-linux-x86_64-gnu.tar.gz" \
+            "zfetch-${VERSION}-linux-aarch64-gnu.tar.gz" \
+            "zfetch-${VERSION}-linux-x86_64-musl.tar.gz" \
+            "zfetch-${VERSION}-linux-aarch64-musl.tar.gz" | sort)"
+          actual="$(find . -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::Release asset set differs from the expected nine files"
+            diff <(echo "$expected") <(echo "$actual") || true
+            exit 1
+          fi
+          mapfile -t files <<< "$expected"
+          sha256sum -- "${files[@]}" > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          {
+            echo 'sums<<SUMS_EOF'
+            cat SHA256SUMS
+            echo 'SUMS_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-assets
+          path: assets/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Create tag and DRAFT release
+    needs: [validate, checksums]
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    outputs:
+      url: ${{ steps.release.outputs.url }}
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+      TAG: ${{ needs.validate.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download release assets
+        uses: actions/download-artifact@v6
+        with:
+          name: release-assets
+          path: release-assets
+
+      - name: Re-verify assets, notes and release state
+        run: |
+          set -euo pipefail
+          notes="docs/RELEASE-NOTES-v${VERSION}.md"
+          if [[ ! -s "$notes" ]]; then
+            echo "::error::$notes is missing or empty; write the release notes and rerun"
+            exit 1
+          fi
+          (cd release-assets && sha256sum -c SHA256SUMS)
+          test "$(find release-assets -mindepth 1 -maxdepth 1 | wc -l)" -eq 10
+          # This token has write access, so draft releases are visible here.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists (possibly as a draft)"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag $TAG already exists on origin"
+            exit 1
+          fi
+
+      - name: Create annotated tag
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$TAG" -m "zfetch $TAG" "$GITHUB_SHA"
+          # Tags pushed with GITHUB_TOKEN do not trigger other workflows (intended).
+          git push origin "refs/tags/$TAG"
+
+      - name: Create DRAFT release
+        id: release
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --draft --verify-tag \
+            --title "zfetch $TAG" \
+            --notes-file "docs/RELEASE-NOTES-v${VERSION}.md" \
+            release-assets/*
+          url="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url --jq .url)"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+  summary:
+    name: Summary
+    needs: [validate, build-deb, build-rpm, build-musl, build-arch, checksums, publish]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Write job summary
+        env:
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          R_VALIDATE: ${{ needs.validate.result }}
+          R_DEB: ${{ needs.build-deb.result }}
+          R_RPM: ${{ needs.build-rpm.result }}
+          R_MUSL: ${{ needs.build-musl.result }}
+          R_ARCH: ${{ needs.build-arch.result }}
+          R_SUMS: ${{ needs.checksums.result }}
+          R_PUBLISH: ${{ needs.publish.result }}
+          SUMS: ${{ needs.checksums.outputs.sums }}
+          URL: ${{ needs.publish.outputs.url }}
+        run: |
+          set -euo pipefail
+          mode='real (tag + draft release)'
+          [[ "$DRY_RUN" == "true" ]] && mode='dry run (no tag, no release)'
+          {
+            echo "## zfetch release v${VERSION}"
+            echo
+            echo "Mode: **${mode}**"
+            echo
+            echo '| Job | Result |'
+            echo '| --- | --- |'
+            echo "| validate | ${R_VALIDATE} |"
+            echo "| build-deb | ${R_DEB} |"
+            echo "| build-rpm | ${R_RPM} |"
+            echo "| build-musl | ${R_MUSL} |"
+            echo "| build-arch | ${R_ARCH} |"
+            echo "| checksums | ${R_SUMS} |"
+            echo "| publish | ${R_PUBLISH} |"
+            echo
+            if [[ -n "$SUMS" ]]; then
+              echo '### SHA256SUMS'
+              echo '```'
+              echo "$SUMS"
+              echo '```'
+            fi
+            if [[ -n "$URL" ]]; then
+              echo
+              echo "Draft release: ${URL} (review, then publish manually)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

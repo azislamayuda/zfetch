@@ -1,3 +1,7 @@
+# SUPERSEDED by release.yml ("Release" workflow), which builds all nine packages,
+# checksums them and creates a draft release. Kept until the owner decides to delete it.
+# Note: this file still runs on 'push: tags: v*'.
+
 name: RPM and portable Linux builds
 
 on:
