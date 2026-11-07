@@ -1,3 +1,4 @@
+use crate::system::util::{os_release, os_release_value};
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -25,22 +26,6 @@ fn builtin_logo(id: &str) -> Option<&'static str> {
     }
 }
 
-fn os_release_value<'a>(content: &'a str, wanted: &str) -> Option<&'a str> {
-    content.lines().find_map(|line| {
-        let (key, value) = line.split_once('=')?;
-        if key.trim() != wanted {
-            return None;
-        }
-        let value = value.trim();
-        Some(
-            value
-                .strip_prefix('"')
-                .and_then(|v| v.strip_suffix('"'))
-                .unwrap_or(value),
-        )
-    })
-}
-
 fn select_logo(content: &str) -> &'static str {
     if let Some(id) = os_release_value(content, "ID")
         && let Some(logo) = builtin_logo(id)
@@ -60,16 +45,14 @@ fn select_logo(content: &str) -> &'static str {
 }
 
 fn default_logo() -> Vec<String> {
-    let os_release = fs::read_to_string("/etc/os-release")
-        .or_else(|_| fs::read_to_string("/usr/lib/os-release"))
-        .unwrap_or_default();
-    select_logo(&os_release)
+    select_logo(&os_release().unwrap_or_default())
         .lines()
         .map(str::to_string)
         .collect()
 }
 
-fn config_path() -> Option<PathBuf> {
+/// `ZFETCH_LOGO` or the default user logo file (it may not exist).
+pub fn user_logo_path() -> Option<PathBuf> {
     if let Some(path) = env::var_os("ZFETCH_LOGO") {
         return Some(PathBuf::from(path));
     }
@@ -86,7 +69,7 @@ pub fn load(explicit_path: Option<&Path>, no_logo: bool) -> Vec<String> {
 
     // Precedence: CLI --logo, config logo.source, ZFETCH_LOGO,
     // ~/.config/zfetch/logo.txt, /etc/os-release, generic Linux logo.
-    let path = explicit_path.map(Path::to_path_buf).or_else(config_path);
+    let path = explicit_path.map(Path::to_path_buf).or_else(user_logo_path);
     if let Some(path) = path
         && let Ok(content) = fs::read_to_string(path)
     {

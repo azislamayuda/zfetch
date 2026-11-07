@@ -1,0 +1,114 @@
+$ cargo test --locked
+   Compiling zfetch v0.5.0 (<repo>)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.31s
+     Running unittests src/main.rs (target/debug/deps/zfetch-65c0100e61ee8dd1)
+
+running 95 tests
+test advanced::tests::selective_modules_keep_order_and_lazy_collection ... ok
+test advanced::tests::unknown_module_rejected ... ok
+test advanced::tests::default_config_is_valid_json5 ... ok
+test advanced::tests::themes_reject_unknown ... ok
+test cli::tests::doctor_and_benchmark_actions ... ok
+test cli::tests::parses_json_and_only ... ok
+test cli::tests::rejects_conflicting_filters ... ok
+test cli::tests::rejects_empty_modules ... ok
+test cli::tests::rejects_multiple_action_flags ... ok
+test cli::tests::help_columns_are_aligned ... ok
+test cli::tests::sprint03_json_layout_rejects_display_modes ... ok
+test cli::tests::sprint03_layout_parsing ... ok
+test cli::tests::sprint04_privacy_and_export_parsing ... ok
+test cli::tests::validates_config_action_accepts_path ... ok
+test config::tests::defaults_for_missing_fields ... ok
+test config::tests::rejects_duplicate_module ... ok
+test config::tests::rejects_invalid_alignment ... ok
+test config::tests::parses_jsonc_with_comments ... ok
+test config::tests::rejects_unknown_module ... ok
+test display::layout::tests::sprint03_preserve_gpu_telemetry_after_model_compaction ... ok
+test display::layout::tests::test_compact_gpu ... ok
+test display::logo::tests::all_named_logos_present ... ok
+test display::logo::tests::distro_wins_over_family ... ok
+test display::logo::tests::quoted_family_and_fallback ... ok
+test display::logo::tests::ubuntu_by_id ... ok
+test hardware_ext::tests::battery_discharge_and_charge_estimates ... ok
+test hardware_ext::tests::edid_cm_fallback_and_invalid_header ... ok
+test hardware_ext::tests::edid_detailed_timing_size ... ok
+test hardware_ext::tests::frequencies_validate_units ... ok
+test hardware_ext::tests::gpu_type_is_conservative ... ok
+test hardware_ext::tests::json_metadata_opt_in ... ok
+test hardware_ext::tests::sprint021_real_world_iris_xe_and_kernel_base_label ... ok
+test report::tests::address_scrubber_keeps_ordinary_text ... ok
+test report::tests::export_does_not_follow_existing_symlink ... ok
+test system::battery::tests::battery_formats_with_and_without_percent ... ok
+test report::tests::export_writes_private_file_and_rejects_overwrite ... ok
+test system::cpu::tests::arm_processor_and_hardware ... ok
+test doctor::tests::doctor_reports_every_area_and_invalid_config ... ok
+test system::cpu::tests::cpu_topology_parser ... ok
+test report::tests::privacy_masks_user_hostname_ip_and_private_mounts ... ok
+test system::cpu::tests::device_tree_fallback_and_unknown ... ok
+test system::cpu::tests::intel_cpuinfo_preserved ... ok
+test system::cpu::tests::invalid_device_tree_is_ignored ... ok
+test system::desktop::tests::detects_gnome ... ok
+test system::desktop::tests::exact_token_matching ... ok
+test system::desktop::tests::fallbacks_preserve_priority ... ok
+test system::desktop::tests::recognizes_common_desktops ... ok
+test system::desktop::tests::rejects_other_desktops_as_gnome ... ok
+test system::desktop::tests::version_parsing_handles_common_outputs ... ok
+test system::disk::tests::test_escaped_mount_path ... ok
+test system::disk::tests::test_mountinfo_parser ... ok
+test system::disk::tests::test_root_filesystem_usage ... ok
+test system::disk::tests::test_supported_filesystems ... ok
+test system::display::tests::builtin_connector_detection ... ok
+test system::display::tests::edid_preferred_timing ... ok
+test system::display::tests::format_builtin_display ... ok
+test report::tests::privacy_scrubs_mac_ipv6_and_identity_in_every_format ... ok
+test system::display::tests::format_external_display ... ok
+test system::display::tests::parse_current_mode ... ok
+test system::gpu::tests::arm_drm_drivers ... ok
+test system::gpu::tests::vendor_mapping ... ok
+test system::network::tests::detects_default_route ... ok
+test system::network::tests::docker_interface_filter ... ok
+test system::network::tests::ignores_non_default_route ... ok
+test system::network::tests::ipv4_netmask_prefix ... ok
+test system::package_db::tests::finds_installed_ptyxis ... ok
+test system::package_db::tests::handles_last_record_without_blank_line ... ok
+test system::package_db::tests::ignores_uninstalled_package ... ok
+test system::package_db::tests::parses_ubuntu_package_version ... ok
+test system::packages::tests::dpkg_counts_only_installed_records ... ok
+test system::packages::tests::missing_package_databases_are_ignored ... ok
+test system::packages::tests::apk_counts_package_records ... ok
+test system::packages::tests::pacman_uses_desc_files ... ok
+test system::terminal::tests::parses_bash_process ... ok
+test system::terminal::tests::parses_process_with_parentheses ... ok
+test system::packages::tests::portage_counts_category_package_dirs ... ok
+test system::packages::tests::snap_names_are_deduplicated ... ok
+test system::terminal::tests::parses_ptyxis_process ... ok
+test system::packages::tests::xbps_counts_installed_states ... ok
+test system::terminal::tests::rejects_invalid_stat ... ok
+test system::tests::test_disabled_detection_is_skipped ... ok
+test system::packages::tests::new_parsers_handle_missing_empty_and_malformed_input ... ok
+test system::util::tests::meminfo_reads_kib_as_bytes ... ok
+test system::util::tests::os_release_quotes ... ok
+test system::util::tests::usage_formats_and_rounds ... ok
+test system::wm::tests::desktops_use_exact_tokens ... ok
+test system::wm::tests::socket_variables_win ... ok
+test update::tests::asset_urls_must_match_release_exactly ... ok
+test update::tests::categorizes_release_versions ... ok
+test update::tests::compares_versions_numerically ... ok
+test update::tests::manual_steps_never_suggest_overwriting_package_files ... ok
+test update::tests::native_arch_is_supported_or_explicitly_rejected ... ok
+test update::tests::parses_release_json_with_serde_json ... ok
+test update::tests::install_method_file_checks ... ok
+test update::tests::reads_expected_checksum_only ... ok
+
+test result: ok. 95 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cli.rs (target/debug/deps/cli-831214011bde0e27)
+
+running 3 tests
+test doctor_runs_read_only_and_redacts_with_privacy ... ok
+test benchmark_prints_module_table ... ok
+test privacy_applies_to_terminal_json_and_export ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+exit=0

@@ -1,0 +1,4 @@
+$ cargo build --locked --profile compact
+   Compiling zfetch v0.5.0 (<repo>)
+    Finished `compact` profile [optimized] target(s) in 7.48s
+exit=0

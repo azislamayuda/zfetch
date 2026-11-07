@@ -1,0 +1,39 @@
+# 10 JSON schema
+PASS json.tool parses
+PASS --format json schema_version= 1 missing= [] added= []
+PASS --format json --hardware-details schema_version= 1 missing= [] added= []
+PASS --format json --privacy schema_version= 1 missing= [] added= []
+# 11 config
+Config created: <tmp>/v/cfg/zfetch/config.jsonc
+-rw-rw-r--
+Configuration valid: <tmp>/v/cfg/zfetch/config.jsonc
+exit=0
+zfetch: Unknown module 'nope' in modules.system
+exit=0
+zfetch: Invalid config <tmp>/bad2.jsonc: unknown variant `middle`, expected one of `top`, `center`, `bottom` at line 1 column 22
+exit=0
+zfetch: Invalid config <tmp>/bad3.jsonc: EOF parsing identifier at line 1 column 1
+exit=0
+zfetch: Invalid config <tmp>/bad4.jsonc: unknown field `colour`, expected one of `logo`, `theme`, `display`, `modules` at line 1 column 3
+exit=0
+zfetch: Config does not exist: <tmp>/missing.jsonc
+exit=2
+# 12 exports
+Report exported successfully.
+Report exported successfully.
+600 r.txt
+600 r.json
+zfetch export: Cannot create new report r.txt: File exists (
+overwrite exit=1
+zfetch export: Cannot create new report link.txt: File exist
+symlink exit=1 victim=safe
+600 loose.txt (umask 000)
+r.txt:0
+r.json:0
+r.json:0
+r.txt:0
+# 11b real exit codes (stdout/stderr discarded), new vs old message equality
+bad1: new exit=2 old exit=2 same-message
+bad2: new exit=2 old exit=2 same-message
+bad3: new exit=2 old exit=2 same-message
+bad4: new exit=2 old exit=2 same-message

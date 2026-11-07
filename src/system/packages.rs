@@ -163,7 +163,7 @@ fn count_appimage() -> Option<usize> {
 
 // RPM database can use SQLite, Berkeley DB, or NDB. Use rpm's own query to
 // avoid fragile direct parsing. It runs only if an rpm database is present.
-fn rpm_database_present() -> bool {
+pub fn rpm_database_present() -> bool {
     ["/usr/lib/sysimage/rpm", "/var/lib/rpm"]
         .iter()
         .any(|path| {
@@ -186,7 +186,44 @@ fn count_rpm() -> Option<usize> {
     if !output.status.success() {
         return None;
     }
-    Some(output.stdout.iter().filter(|&&c| c == b'\n').count())
+    Some(
+        output
+            .stdout
+            .split(|&byte| byte == b'\n')
+            .filter(|name| !name.is_empty())
+            .count(),
+    )
+}
+
+// Alpine: one "P:<name>" line per installed package record.
+fn count_apk_at(path: &Path) -> Option<usize> {
+    let text = fs::read_to_string(path).ok()?;
+    Some(text.lines().filter(|line| line.starts_with("P:")).count())
+}
+
+// Gentoo Portage: /var/db/pkg/<category>/<package-version>/.
+fn count_portage_at(path: &Path) -> Option<usize> {
+    if !path.is_dir() {
+        return None;
+    }
+    Some(directories(path).iter().map(|c| directories(c).len()).sum())
+}
+
+// Void: pkgdb-<ver>.plist holds every package; installed ones carry
+// <key>state</key><string>installed</string>. Counting *.plist files would
+// include pkgdb itself and miss packages without a files list.
+fn count_xbps_at(path: &Path) -> Option<usize> {
+    let pkgdb = fs::read_dir(path).ok()?.flatten().find(|entry| {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        name.starts_with("pkgdb-") && name.ends_with(".plist")
+    })?;
+    let text = fs::read_to_string(pkgdb.path()).ok()?;
+    Some(
+        text.lines()
+            .filter(|line| line.trim() == "<string>installed</string>")
+            .count(),
+    )
 }
 
 pub fn summary() -> String {
@@ -210,6 +247,13 @@ pub fn summary() -> String {
         count_pacman_at(Path::new("/var/lib/pacman/local")),
         true,
     );
+    add(
+        "apk",
+        count_apk_at(Path::new("/lib/apk/db/installed")),
+        true,
+    );
+    add("portage", count_portage_at(Path::new("/var/db/pkg")), true);
+    add("xbps", count_xbps_at(Path::new("/var/db/xbps")), true);
     add("flatpak", count_flatpak(), false);
     add("snap", count_snap(), false);
     if out.is_empty() {
@@ -254,6 +298,94 @@ mod tests {
         assert_eq!(count_snap_files_at(&root), Some(2));
         fs::remove_dir_all(root).unwrap();
     }
+    fn fixture_dir(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "zfetch-{name}-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    #[test]
+    fn apk_counts_package_records() {
+        let root = fixture_dir("apk");
+        let db = root.join("installed");
+        fs::write(
+            &db,
+            "C:Q1abc=\nP:musl\nV:1.2.5-r0\n\nC:Q1def=\nP:busybox\nV:1.36\n",
+        )
+        .unwrap();
+        assert_eq!(count_apk_at(&db), Some(2));
+        assert_eq!(count_apk_at(&root.join("missing")), None);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn portage_counts_category_package_dirs() {
+        let root = fixture_dir("portage");
+        for dir in [
+            "sys-apps/portage-3.0",
+            "sys-apps/sed-4.9",
+            "app-editors/nano-8.0",
+        ] {
+            fs::create_dir_all(root.join(dir)).unwrap();
+        }
+        assert_eq!(count_portage_at(&root), Some(3));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn xbps_counts_installed_states() {
+        let root = fixture_dir("xbps");
+        fs::write(
+            root.join("pkgdb-0.38.plist"),
+            "<dict>\n<key>bash</key>\n<dict>\n<key>state</key>\n<string>installed</string>\n</dict>\n<key>old</key>\n<dict>\n<key>state</key>\n<string>half-removed</string>\n</dict>\n<key>nano</key>\n<dict>\n<key>state</key>\n<string>installed</string>\n</dict>\n</dict>\n",
+        )
+        .unwrap();
+        fs::write(root.join(".bash-files.plist"), "").unwrap();
+        assert_eq!(count_xbps_at(&root), Some(2));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn new_parsers_handle_missing_empty_and_malformed_input() {
+        let root = fixture_dir("edge");
+        let missing = root.join("missing");
+        assert_eq!(count_apk_at(&missing), None);
+        assert_eq!(count_portage_at(&missing), None);
+        assert_eq!(count_xbps_at(&missing), None);
+
+        let apk = root.join("installed");
+        fs::write(&apk, "").unwrap();
+        assert_eq!(count_apk_at(&apk), Some(0));
+        fs::write(&apk, "garbage\nPX:no\n P:indented\np:lower\nP:musl\n").unwrap();
+        assert_eq!(count_apk_at(&apk), Some(1));
+        fs::write(&apk, [0xff, 0xfe, b'\n']).unwrap();
+        assert_eq!(
+            count_apk_at(&apk),
+            None,
+            "non-UTF-8 is unreadable, not a panic"
+        );
+
+        // A file where a directory is expected, and stray files inside a category.
+        assert_eq!(count_portage_at(&apk), None);
+        let portage = root.join("pkg");
+        fs::create_dir_all(portage.join("sys-apps/sed-4.9")).unwrap();
+        fs::write(portage.join("sys-apps/stray-file"), "").unwrap();
+        fs::write(portage.join("stray-top-file"), "").unwrap();
+        assert_eq!(count_portage_at(&portage), Some(1));
+
+        let xbps = root.join("xbps");
+        fs::create_dir_all(&xbps).unwrap();
+        assert_eq!(count_xbps_at(&xbps), None, "no pkgdb file");
+        fs::write(xbps.join("pkgdb-0.38.plist"), "").unwrap();
+        assert_eq!(count_xbps_at(&xbps), Some(0));
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn pacman_uses_desc_files() {
         let root = std::env::temp_dir().join(format!(

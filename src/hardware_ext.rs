@@ -5,7 +5,7 @@
 //! Missing or unreliable sysfs values are omitted rather than guessed.
 use crate::{cli::Options, config::Config, system::SystemInfo};
 use serde_json::{Value, json};
-use std::{fs, path::Path};
+use std::{fmt::Write, fs, path::Path};
 
 #[derive(Debug, Default)]
 pub struct HardwareTelemetry {
@@ -40,10 +40,6 @@ struct DisplayDetails {
     width_mm: u16,
     height_mm: u16,
     diagonal_inches: f64,
-}
-
-fn enabled(config: &Config, name: &str) -> bool {
-    config.modules.hardware.iter().any(|item| item == name)
 }
 
 fn read_u64(path: &Path) -> Option<u64> {
@@ -298,13 +294,10 @@ fn detect_displays(root: &Path, known_displays: &[String]) -> Vec<DisplayDetails
 
 fn append_frequency(info: &mut String, frequencies: CpuFrequencies) {
     if let Some(base) = frequencies.base_mhz {
-        info.push_str(&format!(
-            " | Kernel Base {:.2} GHz",
-            f64::from(base) / 1_000.0
-        ));
+        let _ = write!(info, " | Kernel Base {:.2} GHz", f64::from(base) / 1_000.0);
     }
     if let Some(max) = frequencies.max_mhz {
-        info.push_str(&format!(" | Max {:.2} GHz", f64::from(max) / 1_000.0));
+        let _ = write!(info, " | Max {:.2} GHz", f64::from(max) / 1_000.0);
     }
 }
 
@@ -324,30 +317,29 @@ fn format_estimate(estimate: BatteryEstimate) -> String {
 }
 
 /// Enrich only modules selected by CLI/JSONC, and only when explicitly requested.
-/// Caller should run advanced::enrich_hardware first for CPU cores/threads.
 pub fn enrich(info: &mut SystemInfo, config: &Config, options: &Options) -> HardwareTelemetry {
     let mut telemetry = HardwareTelemetry::default();
     if !options.hardware_details {
         return telemetry;
     }
-    if enabled(config, "cpu") {
+    if config.modules.enabled("cpu") {
         telemetry.cpu = cpu_frequencies(Path::new("/sys/devices/system/cpu/cpu0/cpufreq"));
         if let Some(frequencies) = telemetry.cpu {
             append_frequency(&mut info.cpu, frequencies);
         }
     }
-    if enabled(config, "gpu") {
+    if config.modules.enabled("gpu") {
         let kind = gpu_kind(&info.gpu);
         let (current_mhz, max_mhz) = drm_card_clock(Path::new("/sys/class/drm"), &info.gpu);
         if kind.is_some() || current_mhz.is_some() || max_mhz.is_some() {
             if let Some(kind) = kind {
-                info.gpu.push_str(&format!(" | {kind}"));
+                let _ = write!(info.gpu, " | {kind}");
             }
             if let Some(current) = current_mhz {
-                info.gpu.push_str(&format!(" | Current {current} MHz"));
+                let _ = write!(info.gpu, " | Current {current} MHz");
             }
             if let Some(max) = max_mhz {
-                info.gpu.push_str(&format!(" | Max {max} MHz"));
+                let _ = write!(info.gpu, " | Max {max} MHz");
             }
             telemetry.gpu = Some(GpuDetails {
                 kind,
@@ -356,13 +348,13 @@ pub fn enrich(info: &mut SystemInfo, config: &Config, options: &Options) -> Hard
             });
         }
     }
-    if enabled(config, "battery") {
+    if config.modules.enabled("battery") {
         telemetry.battery = battery_estimate(Path::new("/sys/class/power_supply"));
-        if let (Some(display), Some(estimate)) = (info.battery.as_mut(), telemetry.battery) {
-            display.push_str(&format!(" | {}", format_estimate(estimate)));
+        if let (Some(battery), Some(estimate)) = (info.battery.as_mut(), telemetry.battery) {
+            let _ = write!(battery.extra, " | {}", format_estimate(estimate));
         }
     }
-    if enabled(config, "display") {
+    if config.modules.enabled("display") {
         telemetry.displays = detect_displays(Path::new("/sys/class/drm"), &info.displays);
         for detected in &telemetry.displays {
             if let Some(line) = info
@@ -370,7 +362,7 @@ pub fn enrich(info: &mut SystemInfo, config: &Config, options: &Options) -> Hard
                 .iter_mut()
                 .find(|line| line.contains(&format!("({})", detected.connector)))
             {
-                line.push_str(&format!(" | {:.1}\"", detected.diagonal_inches));
+                let _ = write!(line, " | {:.1}\"", detected.diagonal_inches);
             }
         }
     }

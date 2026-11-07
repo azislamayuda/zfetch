@@ -1,22 +1,14 @@
+use super::util::{os_release, os_release_value};
 use std::fs;
 
 pub fn name() -> String {
-    let content = fs::read_to_string("/etc/os-release")
-        .or_else(|_| fs::read_to_string("/usr/lib/os-release"));
-
-    if let Ok(content) = content {
-        for line in content.lines() {
-            if let Some(name) = line.strip_prefix("PRETTY_NAME=") {
-                return name.trim_matches('"').to_string();
-            }
-        }
-    }
-
-    "Linux".to_string()
+    os_release()
+        .as_deref()
+        .and_then(|content| os_release_value(content, "PRETTY_NAME"))
+        .map_or_else(|| "Linux".to_string(), str::to_string)
 }
 
 pub fn kernel() -> String {
     fs::read_to_string("/proc/sys/kernel/osrelease")
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|_| "Unknown".to_string())
+        .map_or_else(|_| "Unknown".to_string(), |s| s.trim().to_string())
 }

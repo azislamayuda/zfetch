@@ -1,0 +1,65 @@
+# valid flags
+PASS exit=0 (want 0): zfetch -h |                           other install methods get safe manual steps
+PASS exit=0 (want 0): zfetch --help |                           other install methods get safe manual steps
+PASS exit=0 (want 0): zfetch -V | zfetch 0.5.0
+PASS exit=0 (want 0): zfetch --version | zfetch 0.5.0
+PASS exit=0 (want 0): zfetch --no-color |                          Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --logo <tmp>/cli/logo.txt |     Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --no-logo | Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --logo-align top |                          Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --logo-align center |                          Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --logo-align bottom |         '''  ''''        Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --format terminal |                          Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --format json | }
+PASS exit=0 (want 0): zfetch --only os,cpu |         '''  ''''        
+PASS exit=0 (want 0): zfetch --exclude disk,battery |                          Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --list-modules | HARDWARE: host, bios, display, cpu, gpu, memory, swap, disk, local_ip, battery, uptime
+PASS exit=0 (want 0): zfetch --preset minimal | Memory      8.98 GiB / 14.86 GiB (60%)
+PASS exit=0 (want 0): zfetch --preset default |                          Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --preset full |                          Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --layout compact | Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --layout classic |                          Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --layout detailed |                          Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --theme nord |                          Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --list-themes | Themes use the existing eight ANSI named colors, not truecolor palettes.
+PASS exit=0 (want 0): zfetch --hardware-details |                          Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --privacy |                          Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --export <tmp>/cli/r.txt | Report exported successfully.
+PASS exit=0 (want 0): zfetch --init-config | Config created: <tmp>
+PASS exit=0 (want 0): zfetch --validate-config | Configuration valid: <tmp>
+PASS exit=0 (want 0): zfetch --config <tmp>/cli/cfg/zfetch/config.jsonc |                          Uptime      0h 55m
+PASS exit=0 (want 0): zfetch --doctor | [OK]   curl: found (--check-update / --update)
+PASS exit=0 (want 0): zfetch --doctor --privacy | [OK]   curl: found (--check-update / --update)
+PASS exit=0 (want 0): zfetch --doctor --config <tmp>/cli/cfg/zfetch/config.jsonc | [OK]   curl: found (--check-update / --update)
+PASS exit=0 (want 0): zfetch --benchmark | Threaded modules (desktop, terminal, packages, displays, battery) overlap.
+PASS exit=0 (want 0): zfetch --benchmark --config <tmp>/cli/cfg/zfetch/config.jsonc | Threaded modules (desktop, terminal, packages, displays, battery) overlap.
+# invalid combinations
+PASS exit=2 (want 2): zfetch --only os --exclude cpu | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --logo <tmp>/cli/logo.txt --no-logo | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --format json --layout compact | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --format json --layout detailed | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --check-update --list-modules | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --doctor --benchmark | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --doctor --no-logo | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --benchmark --privacy | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --update --privacy | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --list-modules --config x | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --only nope | zfetch: Unknown module: 'nope'. Run zfetch --list-modules.
+PASS exit=2 (want 2): zfetch --only os,,cpu | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --only os,os | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --format xml | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --layout x | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --preset x | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --theme x | zfetch: Unknown theme: 'x'. Run zfetch --list-themes.
+PASS exit=2 (want 2): zfetch --logo-align x | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --logo /nonexistent | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --export | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --export --privacy | Try 'zfetch --help' for usage.
+FAIL exit=1 (want 2): zfetch --export <tmp>/cli/r.txt | zfetch export: Cannot create new report <tmp>
+PASS exit=2 (want 2): zfetch --init-config | zfetch: Cannot create <tmp>
+PASS exit=2 (want 2): zfetch --bogus | Try 'zfetch --help' for usage.
+PASS exit=2 (want 2): zfetch --config /nonexistent.jsonc | zfetch: Cannot read config /nonexistent.jsonc: No such file or directory (os error 2)
+# help lists
+      --doctor            Read-only diagnostics (combine with --privacy to redact)
+      --benchmark         Show per-module detection time
+NOTE: export overwrite refusal exits 1 (runtime error) in both v0.4.0 and v0.5.0 (main.rs failure path); the expectation of 2 was wrong, not a regression. Verified: old-exit=1

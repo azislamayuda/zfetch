@@ -1,0 +1,24 @@
+cargo-deb 3.8.0
+asset exists: README.md
+asset exists: LICENSE
+asset exists: docs/licenses/fastfetch-MIT.txt
+asset exists: docs/THIRD_PARTY_LOGOS.md
+    Finished `compact` profile [optimized] target(s) in 10.64s
+<tmp>/debtarget/debian/zfetch_0.5.0-1_amd64.deb
+deb: zfetch_0.5.0-1_amd64.deb
+drwxr-xr-x 0 ./usr/
+drwxr-xr-x 0 ./usr/share/
+drwxr-xr-x 0 ./usr/share/doc/
+drwxr-xr-x 0 ./usr/share/doc/zfetch/
+-rw-r--r-- 1070 ./usr/share/doc/zfetch/LICENSE
+-rw-r--r-- 18249 ./usr/share/doc/zfetch/README.md
+-rw-r--r-- 651 ./usr/share/doc/zfetch/THIRD_PARTY_LOGOS.md
+-rw-r--r-- 1112 ./usr/share/doc/zfetch/fastfetch-MIT.txt
+-rw-r--r-- 1257 ./usr/share/doc/zfetch/copyright
+drwxr-xr-x 0 ./usr/bin/
+-rwxr-xr-x 771592 ./usr/bin/zfetch
+Package: zfetch
+Version: 0.5.0-1
+Architecture: amd64
+Depends: apt, coreutils, curl, dpkg, libc6 (>= 2.39)
+/dev/fd/63 <tmp>/debtarget/compact/zfetch differ: byte 41, line 1

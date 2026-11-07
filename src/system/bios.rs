@@ -1,35 +1,19 @@
-use std::fs;
-
-fn read_dmi(field: &str) -> Option<String> {
-    fs::read_to_string(format!("/sys/class/dmi/id/{field}"))
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
+use super::util::read_dmi;
 
 pub fn info() -> String {
-    let vendor = read_dmi("bios_vendor");
-    let version = read_dmi("bios_version");
-    let date = read_dmi("bios_date");
+    let mut result = [read_dmi("bios_vendor"), read_dmi("bios_version")]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ");
 
-    let mut parts = Vec::new();
-
-    if let Some(vendor) = vendor {
-        parts.push(vendor);
-    }
-
-    if let Some(version) = version {
-        parts.push(version);
-    }
-
-    let mut result = parts.join(" ");
-
-    if let Some(date) = date {
+    if let Some(date) = read_dmi("bios_date") {
         if !result.is_empty() {
             result.push(' ');
         }
-
-        result.push_str(&format!("({date})"));
+        result.push('(');
+        result.push_str(&date);
+        result.push(')');
     }
 
     if result.is_empty() {

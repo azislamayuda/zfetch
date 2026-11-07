@@ -60,6 +60,27 @@ pub enum Action {
     ListThemes,
     InitConfig,
     ValidateConfig(Option<PathBuf>),
+    Doctor {
+        privacy: bool,
+        config: Option<PathBuf>,
+    },
+    Benchmark(Option<PathBuf>),
+}
+
+/// Flags that run one standalone action instead of the normal report.
+const ACTION_FLAGS: [&str; 8] = [
+    "check-update",
+    "update",
+    "list-modules",
+    "list-themes",
+    "init-config",
+    "validate-config",
+    "doctor",
+    "benchmark",
+];
+
+fn action_name(name: &str) -> Option<&'static str> {
+    ACTION_FLAGS.iter().copied().find(|flag| *flag == name)
 }
 
 fn csv_modules(raw: &str, option: &str) -> Result<Vec<String>, String> {
@@ -88,28 +109,8 @@ fn parse_args<I: Iterator<Item = String>>(mut args: I) -> Result<Action, String>
         match arg.as_str() {
             "-h" | "--help" => return Ok(Action::Help),
             "-V" | "--version" => return Ok(Action::Version),
-            "--check-update" => {
-                special = Some("check-update");
-                special_count += 1;
-            }
-            "--update" => {
-                special = Some("update");
-                special_count += 1;
-            }
-            "--list-modules" => {
-                special = Some("list-modules");
-                special_count += 1;
-            }
-            "--list-themes" => {
-                special = Some("list-themes");
-                special_count += 1;
-            }
-            "--init-config" => {
-                special = Some("init-config");
-                special_count += 1;
-            }
-            "--validate-config" => {
-                special = Some("validate-config");
+            flag if let Some(name) = flag.strip_prefix("--").and_then(action_name) => {
+                special = Some(name);
                 special_count += 1;
             }
             "--no-color" => {
@@ -124,10 +125,7 @@ fn parse_args<I: Iterator<Item = String>>(mut args: I) -> Result<Action, String>
                 options.hardware_details = true;
                 ordinary_options = true;
             }
-            "--privacy" => {
-                options.privacy = true;
-                ordinary_options = true;
-            }
+            "--privacy" => options.privacy = true,
             "--export" => {
                 let value = args.next().ok_or("--export requires a file path")?;
                 if value.is_empty() || value.starts_with("--") {
@@ -232,8 +230,12 @@ fn parse_args<I: Iterator<Item = String>>(mut args: I) -> Result<Action, String>
         return Err("Only one action flag can be used at a time".into());
     }
     if let Some(name) = special {
-        // --config is explicitly allowed for --validate-config only.
-        if ordinary_options || (options.config.is_some() && name != "validate-config") {
+        // --config is allowed for config-reading actions; --privacy only for --doctor.
+        let config_ok = matches!(name, "validate-config" | "doctor" | "benchmark");
+        if ordinary_options
+            || (options.config.is_some() && !config_ok)
+            || (options.privacy && name != "doctor")
+        {
             return Err(format!("--{name} cannot be combined with display options"));
         }
         return Ok(match name {
@@ -243,6 +245,11 @@ fn parse_args<I: Iterator<Item = String>>(mut args: I) -> Result<Action, String>
             "list-themes" => Action::ListThemes,
             "init-config" => Action::InitConfig,
             "validate-config" => Action::ValidateConfig(options.config),
+            "doctor" => Action::Doctor {
+                privacy: options.privacy,
+                config: options.config,
+            },
+            "benchmark" => Action::Benchmark(options.config),
             _ => unreachable!(),
         });
     }
@@ -253,42 +260,47 @@ pub fn parse() -> Result<Action, String> {
     parse_args(env::args().skip(1))
 }
 
-pub fn print_help() {
-    println!("zfetch v{}", env!("CARGO_PKG_VERSION"));
-    println!("A fast Linux system information tool written in Rust.");
-    println!();
-    println!("Usage: zfetch [OPTIONS]");
-    println!();
-    println!("Options:");
-    println!("  -h, --help              Show help");
-    println!("  -V, --version           Show version");
-    println!("      --no-color          Disable ANSI colors");
-    println!("      --logo <FILE>       Use custom ASCII logo");
-    println!("      --no-logo           Hide ASCII logo");
-    println!("      --logo-align <POS>  top, center or bottom");
-    println!("      --config <FILE>     Use custom JSONC config");
-    println!("      --format <FMT>      terminal (default) or json");
-    println!("      --only <MODULES>    Detect only listed modules");
-    println!("      --exclude <MODULES> Skip listed modules");
-    println!("      --list-modules      Show supported module names");
-    println!("      --preset <NAME>     minimal, default or full (module selection)");
-    println!("      --layout <NAME>     compact, classic (default), detailed");
-    println!("      --theme <NAME>      Select a built-in ANSI theme");
-    println!("      --list-themes       Show available themes");
-    println!("      --hardware-details Append CPU core/thread details");
-    println!("      --privacy          Hide identity, local IP and personal mount paths");
-    println!("      --export <FILE>    Create a new report (.txt or use --format json)");
-    println!("      --init-config       Create an example config without overwrite");
-    println!("      --validate-config   Validate JSONC configuration");
-    println!("      --check-update      Check latest stable GitHub Release");
-    println!("      --update            Check and offer safe .deb update");
-}
+pub const HELP: &str = concat!(
+    "zfetch v",
+    env!("CARGO_PKG_VERSION"),
+    "
+A fast Linux system information tool written in Rust.
+
+Usage: zfetch [OPTIONS]
+
+Options:
+  -h, --help              Show help
+  -V, --version           Show version
+      --no-color          Disable ANSI colors
+      --logo <FILE>       Use custom ASCII logo
+      --no-logo           Hide ASCII logo
+      --logo-align <POS>  top, center or bottom
+      --config <FILE>     Use custom JSONC config
+      --format <FMT>      terminal (default) or json
+      --only <MODULES>    Detect only listed modules
+      --exclude <MODULES> Skip listed modules
+      --list-modules      Show supported module names
+      --preset <NAME>     minimal, default or full (module selection)
+      --layout <NAME>     compact, classic (default), detailed
+      --theme <NAME>      Select a built-in ANSI theme
+      --list-themes       Show available themes
+      --hardware-details  Append CPU core/thread details
+      --privacy           Hide identity, IP/MAC addresses, serials and personal mount paths
+      --export <FILE>     Create a new report (.txt or use --format json)
+      --init-config       Create an example config without overwrite
+      --validate-config   Validate JSONC configuration
+      --doctor            Read-only diagnostics (combine with --privacy to redact)
+      --benchmark         Show per-module detection time
+      --check-update      Check latest stable GitHub Release
+      --update            Install a verified .deb update after confirmation;
+                          other install methods get safe manual steps"
+);
 
 #[cfg(test)]
 mod tests {
     use super::*;
     fn parse(input: &[&str]) -> Result<Action, String> {
-        parse_args(input.iter().map(|s| s.to_string()))
+        parse_args(input.iter().map(std::string::ToString::to_string))
     }
     #[test]
     fn sprint04_privacy_and_export_parsing() {
@@ -355,6 +367,29 @@ mod tests {
     fn rejects_multiple_action_flags() {
         assert!(parse(&["--check-update", "--list-modules"]).is_err());
     }
+    #[test]
+    fn doctor_and_benchmark_actions() {
+        assert!(matches!(
+            parse(&["--doctor", "--privacy"]),
+            Ok(Action::Doctor { privacy: true, .. })
+        ));
+        assert!(matches!(
+            parse(&["--benchmark"]),
+            Ok(Action::Benchmark(None))
+        ));
+        assert!(parse(&["--doctor", "--no-logo"]).is_err());
+        assert!(parse(&["--benchmark", "--privacy"]).is_err());
+        assert!(parse(&["--doctor", "--benchmark"]).is_err());
+    }
+
+    #[test]
+    fn help_columns_are_aligned() {
+        for line in HELP.lines().filter(|l| l.starts_with("  ")) {
+            assert_eq!(line.chars().nth(25), Some(' '), "{line}");
+            assert_ne!(line.chars().nth(26), Some(' '), "{line}");
+        }
+    }
+
     #[test]
     fn validates_config_action_accepts_path() {
         assert!(matches!(

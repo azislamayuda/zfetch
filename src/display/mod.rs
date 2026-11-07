@@ -1,6 +1,6 @@
 mod colors;
 mod layout;
-mod logo;
+pub mod logo;
 
 use crate::{
     cli::{LogoAlign, Options},
@@ -124,8 +124,7 @@ pub fn render(info: &SystemInfo, options: &Options, config: &Config) {
 
         let raw_logo = logo_index
             .and_then(|index| logo_lines.get(index))
-            .map(String::as_str)
-            .unwrap_or("");
+            .map_or("", String::as_str);
 
         let padding = logo_width.saturating_sub(raw_logo.chars().count());
 

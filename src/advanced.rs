@@ -1,7 +1,7 @@
 //! v0.3.0 advanced CLI operations. Everything here is offline on normal runs.
 use crate::{
     cli::{Options, Preset},
-    config::{Config, NamedColor},
+    config::{Config, HARDWARE_MODULES, NamedColor, SYSTEM_MODULES, default_config_path},
     system::SystemInfo,
 };
 use serde_json::{Map, Value, json};
@@ -12,13 +12,6 @@ use std::{
     path::PathBuf,
 };
 
-pub const SYSTEM_MODULES: &[&str] = &[
-    "os", "kernel", "arch", "shell", "de", "session", "wm", "terminal", "packages",
-];
-pub const HARDWARE_MODULES: &[&str] = &[
-    "host", "bios", "display", "cpu", "gpu", "memory", "swap", "disk", "local_ip", "battery",
-    "uptime",
-];
 pub const THEMES: &[&str] = &[
     "default",
     "monochrome",
@@ -96,7 +89,7 @@ fn apply_theme(config: &mut Config, name: &str) -> Result<(), String> {
 }
 
 /// CLI settings apply to an in-memory config and never overwrite the user's JSONC.
-/// Selection precedes system::collect(), so unselected modules are never detected.
+/// Selection precedes `system::collect()`, so unselected modules are never detected.
 pub fn configure(config: &mut Config, options: &Options) -> Result<(), String> {
     if let Some(preset) = options.preset {
         match preset {
@@ -145,104 +138,46 @@ pub fn configure(config: &mut Config, options: &Options) -> Result<(), String> {
     config.validate()
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct CpuTopology {
-    pub cores: usize,
-    pub threads: usize,
-}
-
-fn parse_cpu_topology(text: &str) -> Option<CpuTopology> {
-    let mut threads = 0;
-    let mut pairs = HashSet::new();
-    let mut fallback_cores = None;
-    for section in text.split("\n\n") {
-        let mut processor = false;
-        let mut physical = "0";
-        let mut core = None;
-        for line in section.lines() {
-            let Some((key, value)) = line.split_once(':') else {
-                continue;
-            };
-            match key.trim() {
-                "processor" => processor = true,
-                "physical id" => physical = value.trim(),
-                "core id" => core = Some(value.trim()),
-                "cpu cores" => fallback_cores = value.trim().parse::<usize>().ok(),
-                _ => {}
-            }
-        }
-        if processor {
-            threads += 1;
-            if let Some(core) = core {
-                pairs.insert((physical.to_owned(), core.to_owned()));
-            }
-        }
-    }
-    if threads == 0 {
-        return None;
-    }
-    let cores = if pairs.is_empty() {
-        fallback_cores.unwrap_or(threads)
-    } else {
-        pairs.len()
-    };
-    Some(CpuTopology { cores, threads })
-}
-
-pub fn cpu_topology() -> Option<CpuTopology> {
-    fs::read_to_string("/proc/cpuinfo")
-        .ok()
-        .and_then(|s| parse_cpu_topology(&s))
-}
-
-pub fn enrich_hardware(info: &mut SystemInfo, config: &Config, options: &Options) {
-    if options.hardware_details
-        && config.modules.hardware.iter().any(|key| key == "cpu")
-        && let Some(topology) = cpu_topology()
-    {
-        info.cpu.push_str(&format!(
-            " | {} cores / {} threads",
-            topology.cores, topology.threads
-        ));
-    }
-}
-
-fn selected(modules: &[String], name: &str) -> bool {
-    modules.iter().any(|v| v == name)
-}
-
-fn insert(map: &mut Map<String, Value>, modules: &[String], key: &str, value: &str) {
-    if selected(modules, key) {
-        map.insert(key.to_string(), json!(value));
-    }
-}
-
 /// JSON is a machine-readable contract: strings retain the v0.2 detector values;
 /// disk usage is exported separately as numeric byte counters.
 pub fn json_document(info: &SystemInfo, config: &Config) -> Value {
-    let sys = &config.modules.system;
-    let hw = &config.modules.hardware;
+    let on = |key| config.modules.enabled(key);
     let mut system = Map::new();
     let mut hardware = Map::new();
-    insert(&mut system, sys, "os", &info.os);
-    insert(&mut system, sys, "kernel", &info.kernel);
-    insert(&mut system, sys, "arch", &info.arch);
-    insert(&mut system, sys, "shell", &info.shell);
-    insert(&mut system, sys, "de", &info.desktop);
-    insert(&mut system, sys, "session", &info.session);
-    insert(&mut system, sys, "wm", &info.wm);
-    insert(&mut system, sys, "terminal", &info.terminal);
-    insert(&mut system, sys, "packages", &info.packages);
-    insert(&mut hardware, hw, "host", &info.host);
-    insert(&mut hardware, hw, "bios", &info.bios);
-    if selected(hw, "display") {
+    for (key, value) in [
+        ("os", &info.os),
+        ("kernel", &info.kernel),
+        ("arch", &info.arch),
+        ("shell", &info.shell),
+        ("de", &info.desktop),
+        ("session", &info.session),
+        ("wm", &info.wm),
+        ("terminal", &info.terminal),
+        ("packages", &info.packages),
+    ] {
+        if on(key) {
+            system.insert(key.into(), json!(value));
+        }
+    }
+    // JSON v1 contract: memory has no percentage, swap keeps it.
+    for (key, value) in [
+        ("host", info.host.clone()),
+        ("bios", info.bios.clone()),
+        ("cpu", info.cpu.clone()),
+        ("gpu", info.gpu.clone()),
+        ("memory", info.memory_text(false)),
+        ("swap", info.swap_text(true)),
+        ("local_ip", info.local_ip.clone()),
+        ("uptime", info.uptime.clone()),
+    ] {
+        if on(key) {
+            hardware.insert(key.into(), json!(value));
+        }
+    }
+    if on("display") {
         hardware.insert("display".into(), json!(&info.displays));
     }
-    insert(&mut hardware, hw, "cpu", &info.cpu);
-    insert(&mut hardware, hw, "gpu", &info.gpu);
-    insert(&mut hardware, hw, "memory", &info.memory);
-    insert(&mut hardware, hw, "swap", &info.swap);
-    if selected(hw, "disk") {
+    if on("disk") {
         let disks: Vec<Value> = info
             .disks
             .iter()
@@ -250,17 +185,16 @@ pub fn json_document(info: &SystemInfo, config: &Config) -> Value {
             .map(|d| {
                 json!({
                     "mount_point": d.mount_point, "filesystem": d.filesystem,
-                    "used_bytes": d.used, "total_bytes": d.total
+                    "used_bytes": d.usage.used, "total_bytes": d.usage.total
                 })
             })
             .collect();
         hardware.insert("disk".into(), json!(disks));
     }
-    insert(&mut hardware, hw, "local_ip", &info.local_ip);
-    if selected(hw, "battery") {
-        hardware.insert("battery".into(), json!(&info.battery));
+    if on("battery") {
+        let battery = info.battery.as_ref().map(|b| b.formatted(true));
+        hardware.insert("battery".into(), json!(battery));
     }
-    insert(&mut hardware, hw, "uptime", &info.uptime);
     json!({
         "schema_version": 1,
         "zfetch_version": env!("CARGO_PKG_VERSION"),
@@ -282,16 +216,12 @@ const DEFAULT_JSONC: &str = r#"{
 }
 "#;
 
-fn default_config_path() -> Result<PathBuf, String> {
-    if let Some(root) = env::var_os("XDG_CONFIG_HOME") {
-        return Ok(PathBuf::from(root).join("zfetch/config.jsonc"));
-    }
-    let home = env::var_os("HOME").ok_or("HOME and XDG_CONFIG_HOME are unset")?;
-    Ok(PathBuf::from(home).join(".config/zfetch/config.jsonc"))
+fn config_path() -> Result<PathBuf, String> {
+    default_config_path().ok_or_else(|| "HOME and XDG_CONFIG_HOME are unset".into())
 }
 
 pub fn init_config() -> Result<(), String> {
-    let path = default_config_path()?;
+    let path = config_path()?;
     let parent = path.parent().ok_or("Invalid config path")?;
     fs::create_dir_all(parent)
         .map_err(|e| format!("Could not create {}: {e}", parent.display()))?;
@@ -314,7 +244,7 @@ pub fn init_config() -> Result<(), String> {
 pub fn validate_config(path: Option<&std::path::Path>) -> Result<(), String> {
     let path = match path {
         Some(p) => p.to_path_buf(),
-        None => default_config_path()?,
+        None => config_path()?,
     };
     if !path.is_file() {
         return Err(format!("Config does not exist: {}", path.display()));
@@ -346,17 +276,6 @@ mod tests {
             ..Options::default()
         };
         assert!(configure(&mut config, &options).is_err());
-    }
-    #[test]
-    fn cpu_topology_parser() {
-        let sample = "processor : 0\nphysical id : 0\ncore id : 0\n\nprocessor : 1\nphysical id : 0\ncore id : 0\n\nprocessor : 2\nphysical id : 0\ncore id : 1\n";
-        assert_eq!(
-            parse_cpu_topology(sample),
-            Some(CpuTopology {
-                cores: 2,
-                threads: 3
-            })
-        );
     }
     #[test]
     fn default_config_is_valid_json5() {

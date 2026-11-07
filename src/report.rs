@@ -10,71 +10,121 @@ use std::{
 };
 
 const REDACTED: &str = "hidden";
+const PRIVATE_MOUNT: &str = "[private mount]";
+const PERSONAL_MOUNT_PREFIXES: [&str; 4] = ["/home/", "/media/", "/run/media/", "/mnt/"];
 
-/// Keep the original values only for last-mile redaction of optional JSON telemetry.
+/// Identity values captured before redaction; `scrub` removes them from any text.
 pub struct Sensitive {
-    username: String,
-    hostname: String,
-    ip_address: String,
+    tokens: [String; 3],
 }
 
 fn valid_token(value: &str) -> bool {
     value.len() >= 3 && !matches!(value, "Unknown" | "unknown" | "hidden")
 }
 
-fn personal_mount(mount: &str) -> bool {
-    ["/home/", "/media/", "/run/media/", "/mnt/"]
+fn personal_mount(text: &str) -> bool {
+    PERSONAL_MOUNT_PREFIXES
         .iter()
-        .any(|prefix| mount.starts_with(prefix))
+        .any(|prefix| text.starts_with(prefix))
 }
 
-/// Redact before rendering, so terminal, text export, and v0.3 JSON use the same source.
+fn is_mac(token: &str) -> bool {
+    let parts: Vec<_> = token.split(':').collect();
+    parts.len() == 6
+        && parts
+            .iter()
+            .all(|p| p.len() == 2 && p.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
+fn is_ipv6(token: &str) -> bool {
+    token.matches(':').count() >= 2 && token.parse::<std::net::Ipv6Addr>().is_ok()
+}
+
+/// Replace MAC and IPv6 address tokens; tokens are runs of [A-Za-z0-9:.].
+fn scrub_addresses(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut token = String::new();
+    for c in text.chars().map(Some).chain([None]) {
+        if let Some(c) = c
+            && (c.is_ascii_alphanumeric() || c == ':' || c == '.')
+        {
+            token.push(c);
+            continue;
+        }
+        // A sentence-ending '.' is not part of the address.
+        let core = token.trim_end_matches('.');
+        if is_mac(core) || is_ipv6(core) {
+            out.push_str(REDACTED);
+            out.push_str(&token[core.len()..]);
+        } else {
+            out.push_str(&token);
+        }
+        token.clear();
+        if let Some(c) = c {
+            out.push(c);
+        }
+    }
+    out
+}
+
+impl Sensitive {
+    pub fn new(username: &str, hostname: &str, ip_address: &str) -> Self {
+        Self {
+            tokens: [username.into(), hostname.into(), ip_address.into()],
+        }
+    }
+
+    /// The one redaction path shared by terminal, text export, JSON and --doctor.
+    pub fn scrub(&self, value: &str) -> String {
+        if personal_mount(value) {
+            return PRIVATE_MOUNT.into();
+        }
+        let mut text = scrub_addresses(value);
+        for old in &self.tokens {
+            if valid_token(old) {
+                text = text.replace(old.as_str(), REDACTED);
+            }
+        }
+        text
+    }
+}
+
+/// Redact before rendering, so terminal, text export, and JSON use the same source.
 pub fn protect_info(info: &mut SystemInfo) -> Sensitive {
-    let ip_address = info
-        .local_ip
-        .split(['/', ' ', '('])
-        .next()
-        .unwrap_or("")
-        .to_owned();
-    let old = Sensitive {
-        username: info.username.clone(),
-        hostname: info.hostname.clone(),
-        ip_address,
-    };
+    let ip_address = info.local_ip.split(['/', ' ', '(']).next().unwrap_or("");
+    let sensitive = Sensitive::new(&info.username, &info.hostname, ip_address);
     info.username = REDACTED.into();
     info.hostname = REDACTED.into();
     if !info.local_ip.is_empty() {
         info.local_ip = REDACTED.into();
     }
-    for disk in &mut info.disks {
-        if personal_mount(&disk.mount_point) {
-            disk.mount_point = "[private mount]".into();
-        }
+    for field in [
+        &mut info.os,
+        &mut info.kernel,
+        &mut info.arch,
+        &mut info.shell,
+        &mut info.desktop,
+        &mut info.session,
+        &mut info.wm,
+        &mut info.terminal,
+        &mut info.packages,
+        &mut info.host,
+        &mut info.bios,
+        &mut info.cpu,
+        &mut info.gpu,
+        &mut info.uptime,
+    ]
+    .into_iter()
+    .chain(&mut info.displays)
+    .chain(info.disks.iter_mut().map(|disk| &mut disk.mount_point))
+    .chain(
+        info.battery
+            .iter_mut()
+            .flat_map(|b| b.state.iter_mut().chain([&mut b.extra])),
+    ) {
+        *field = sensitive.scrub(field);
     }
-    old
-}
-
-fn protected_string(value: &str, sensitive: &Sensitive) -> String {
-    let mut text = value.to_owned();
-    for old in [
-        sensitive.username.as_str(),
-        sensitive.hostname.as_str(),
-        sensitive.ip_address.as_str(),
-    ] {
-        if valid_token(old) {
-            text = text.replace(old, REDACTED);
-        }
-    }
-    // Avoid exposing user-mounted paths in optional telemetry string values.
-    if text.starts_with("/home/")
-        || text.starts_with("/media/")
-        || text.starts_with("/run/media/")
-        || text.starts_with("/mnt/")
-    {
-        "[private mount]".into()
-    } else {
-        text
-    }
+    sensitive
 }
 
 fn sensitive_key(key: &str) -> bool {
@@ -88,7 +138,11 @@ fn sensitive_key(key: &str) -> bool {
             | "ipv6"
             | "mac_address"
             | "ssid"
+            | "serial"
             | "serial_number"
+            | "product_serial"
+            | "board_serial"
+            | "chassis_serial"
     )
 }
 
@@ -109,7 +163,7 @@ pub fn protect_json(value: &mut Value, sensitive: &Sensitive) {
                 protect_json(item, sensitive);
             }
         }
-        Value::String(text) => *text = protected_string(text, sensitive),
+        Value::String(text) => *text = sensitive.scrub(text),
         _ => {}
     }
 }
@@ -147,7 +201,7 @@ pub fn emit(text: &str, export: Option<&Path>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::system::disk::DiskInfo;
+    use crate::system::{battery::Battery, disk::DiskInfo, util::Usage};
     use serde_json::json;
     use std::os::unix::fs::PermissionsExt;
 
@@ -169,24 +223,32 @@ mod tests {
             displays: vec!["1920x1080".into()],
             cpu: "Intel".into(),
             gpu: "Iris Xe".into(),
-            memory: "8 GiB / 16 GiB".into(),
-            swap: "0 GiB / 16 GiB".into(),
+            memory: Some(Usage { used: 8, total: 16 }),
+            swap: Some(Usage { used: 0, total: 16 }),
             disks: vec![
                 DiskInfo {
                     mount_point: "/".into(),
                     filesystem: "ext4".into(),
-                    used: 10,
-                    total: 20,
+                    usage: Usage {
+                        used: 10,
+                        total: 20,
+                    },
                 },
                 DiskInfo {
                     mount_point: "/home/sampleuser/MYDATA".into(),
                     filesystem: "ext4".into(),
-                    used: 10,
-                    total: 20,
+                    usage: Usage {
+                        used: 10,
+                        total: 20,
+                    },
                 },
             ],
             local_ip: "192.168.1.67/24 (wlp0s20f3)".into(),
-            battery: Some("80%".into()),
+            battery: Some(Battery {
+                percent: Some(80),
+                state: Some("Discharging".into()),
+                extra: String::new(),
+            }),
             uptime: "1h".into(),
         }
     }
@@ -211,6 +273,55 @@ mod tests {
         for private in ["sampleuser", "privatehost", "192.168.1.67", "OfficeWiFi"] {
             assert!(!rendered.contains(private));
         }
+    }
+
+    #[test]
+    fn privacy_scrubs_mac_ipv6_and_identity_in_every_format() {
+        let mut info = example_info();
+        info.host = "Laptop of privatehost".into();
+        info.displays = vec!["1920x1080 (eDP-1) aa:bb:cc:dd:ee:ff".into()];
+        info.bios = "fw fe80::1c2b:3aff:fe4d:5e6f/64".into();
+        let sensitive = protect_info(&mut info);
+        let config = crate::config::Config::default();
+
+        let text = crate::display::plain_report(&info, &config);
+        let mut json = crate::advanced::json_document(&info, &config);
+        json["hardware"]["serial_number"] = "SN-123456".into();
+        json["metadata"] = json!({"mac_address": "11:22:33:44:55:66", "ipv6": "2001:db8::1"});
+        protect_json(&mut json, &sensitive);
+        let json = json.to_string();
+
+        for output in [&text, &json] {
+            for private in [
+                "sampleuser",
+                "privatehost",
+                "192.168.1.67",
+                "aa:bb:cc:dd:ee:ff",
+                "fe80::1c2b",
+                "SN-123456",
+                "11:22:33:44:55:66",
+                "2001:db8::1",
+                "/home/",
+            ] {
+                assert!(!output.contains(private), "{private} leaked: {output}");
+            }
+        }
+        assert!(text.contains("1920x1080 (eDP-1) hidden"));
+    }
+
+    #[test]
+    fn address_scrubber_keeps_ordinary_text() {
+        for keep in [
+            "0h 27m",
+            "12:30:45",
+            "std::fs",
+            "1920x1080 @ 60 Hz",
+            "GNOME 50.1",
+        ] {
+            assert_eq!(scrub_addresses(keep), keep);
+        }
+        assert_eq!(scrub_addresses("mac AA:BB:CC:DD:EE:FF."), "mac hidden.");
+        assert_eq!(scrub_addresses("(::1)"), "(hidden)");
     }
 
     #[test]

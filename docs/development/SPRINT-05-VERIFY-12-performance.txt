@@ -1,0 +1,8 @@
+$ python3 scripts/measure.py <v0.4.0>,target/compact/zfetch 30   (isolated XDG_CONFIG_HOME, --no-logo --no-color, interleaved)
+v0.4.0: runs=30 avg_rss_kib=4080.3 median_ms=5.07
+v0.5.0: runs=30 avg_rss_kib=3353.5 median_ms=4.60
+v0.4.0: runs=30 avg_rss_kib=4060.8 median_ms=5.10
+v0.5.0: runs=30 avg_rss_kib=3351.6 median_ms=4.55
+v0.4.0: runs=30 avg_rss_kib=4023.2 median_ms=5.07
+v0.5.0: runs=30 avg_rss_kib=3357.7 median_ms=4.54
+size v0.4.0=1657296 v0.5.0=771848

@@ -1,4 +1,48 @@
-use std::{env, fs};
+use std::{collections::HashSet, env, fs};
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct CpuTopology {
+    pub cores: usize,
+    pub threads: usize,
+}
+
+fn parse_topology(text: &str) -> Option<CpuTopology> {
+    let mut threads = 0;
+    let mut pairs = HashSet::new();
+    let mut fallback_cores = None;
+    for section in text.split("\n\n") {
+        let mut processor = false;
+        let mut physical = "0";
+        let mut core = None;
+        for line in section.lines() {
+            let Some((key, value)) = line.split_once(':') else {
+                continue;
+            };
+            match key.trim() {
+                "processor" => processor = true,
+                "physical id" => physical = value.trim(),
+                "core id" => core = Some(value.trim()),
+                "cpu cores" => fallback_cores = value.trim().parse::<usize>().ok(),
+                _ => {}
+            }
+        }
+        if processor {
+            threads += 1;
+            if let Some(core) = core {
+                pairs.insert((physical, core));
+            }
+        }
+    }
+    if threads == 0 {
+        return None;
+    }
+    let cores = if pairs.is_empty() {
+        fallback_cores.unwrap_or(threads)
+    } else {
+        pairs.len()
+    };
+    Some(CpuTopology { cores, threads })
+}
 
 fn cpuinfo_name(content: &str) -> Option<String> {
     const KEYS: [&str; 4] = ["model name", "Hardware", "Processor", "cpu model"];
@@ -35,7 +79,8 @@ fn detect(cpuinfo: Option<&str>, device_tree: Option<&[u8]>, architecture: &str)
         .unwrap_or_else(|| format!("Unknown CPU ({architecture})"))
 }
 
-pub fn name() -> String {
+/// `details` appends core/thread topology from the same single /proc/cpuinfo read.
+pub fn name(details: bool) -> String {
     let cpuinfo = fs::read_to_string("/proc/cpuinfo").ok();
     // Device tree is common on ARM boards; do not read it when cpuinfo is usable.
     let dt = if cpuinfo.as_deref().and_then(cpuinfo_name).is_none() {
@@ -45,7 +90,11 @@ pub fn name() -> String {
     } else {
         None
     };
-    detect(cpuinfo.as_deref(), dt.as_deref(), env::consts::ARCH)
+    let mut name = detect(cpuinfo.as_deref(), dt.as_deref(), env::consts::ARCH);
+    if details && let Some(t) = cpuinfo.as_deref().and_then(parse_topology) {
+        name += &format!(" | {} cores / {} threads", t.cores, t.threads);
+    }
+    name
 }
 
 #[cfg(test)]
@@ -78,6 +127,18 @@ mod tests {
             "Raspberry Pi 5 Model B"
         );
         assert_eq!(detect(None, None, "aarch64"), "Unknown CPU (aarch64)");
+    }
+
+    #[test]
+    fn cpu_topology_parser() {
+        let sample = "processor : 0\nphysical id : 0\ncore id : 0\n\nprocessor : 1\nphysical id : 0\ncore id : 0\n\nprocessor : 2\nphysical id : 0\ncore id : 1\n";
+        assert_eq!(
+            parse_topology(sample),
+            Some(CpuTopology {
+                cores: 2,
+                threads: 3
+            })
+        );
     }
 
     #[test]

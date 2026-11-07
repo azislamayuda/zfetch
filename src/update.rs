@@ -87,7 +87,7 @@ fn curl_bytes(url: &str, output: Option<&Path>) -> Result<Vec<u8>, String> {
             "1048576"
         },
         "--user-agent",
-        "zfetch-updater/0.2.0",
+        concat!("zfetch-updater/", env!("CARGO_PKG_VERSION")),
     ]);
     if let Some(path) = output {
         cmd.arg("--output").arg(path);
@@ -105,10 +105,8 @@ fn curl_bytes(url: &str, output: Option<&Path>) -> Result<Vec<u8>, String> {
 
 fn fetch_release() -> Result<Release, String> {
     let json = curl_bytes(RELEASE_API, None)?;
-    let text =
-        std::str::from_utf8(&json).map_err(|_| "GitHub returned non-UTF-8 response".to_string())?;
-    let release: Release =
-        json5::from_str(text).map_err(|error| format!("cannot parse GitHub release: {error}"))?;
+    let release: Release = serde_json::from_slice(&json)
+        .map_err(|error| format!("cannot parse GitHub release: {error}"))?;
     if release.draft || release.prerelease {
         return Err("latest release is not stable".into());
     }
@@ -211,26 +209,86 @@ fn verify_deb_package(path: &Path, version: &str, arch: &str) -> Result<(), Stri
     Ok(())
 }
 
-fn installed_by_dpkg() -> bool {
-    // Do not update a source build or a shadowed user/local binary.
-    let Ok(exe) = env::current_exe().and_then(fs::canonicalize) else {
-        return false;
-    };
-    let Ok(packaged) = fs::canonicalize("/usr/bin/zfetch") else {
-        return false;
-    };
-    if exe != packaged {
-        return false;
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InstallMethod {
+    Deb,
+    Pacman,
+    Rpm,
+    Portable,
+}
 
-    let Ok(result) = Command::new("dpkg-query")
-        .args(["-W", "-f=${Status}", "zfetch"])
-        .output()
-    else {
-        return false;
-    };
-    result.status.success()
-        && String::from_utf8_lossy(&result.stdout).trim() == "install ok installed"
+impl InstallMethod {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Deb => ".deb (dpkg)",
+            Self::Pacman => "Arch package (pacman)",
+            Self::Rpm => "RPM package",
+            Self::Portable => "portable or source build",
+        }
+    }
+}
+
+/// True when a package manager's file list owns /usr/bin/zfetch.
+fn lists_binary(list: &Path, entry: &str) -> bool {
+    fs::read_to_string(list).is_ok_and(|text| text.lines().any(|line| line.trim() == entry))
+}
+
+fn pacman_owns_binary(local_db: &Path) -> bool {
+    fs::read_dir(local_db).is_ok_and(|entries| {
+        entries.flatten().any(|entry| {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            // Package dirs are <name>-<pkgver>-<pkgrel>; avoid matching zfetch-git etc.
+            name.strip_prefix("zfetch-")
+                .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_digit()))
+                && lists_binary(&entry.path().join("files"), "usr/bin/zfetch")
+        })
+    })
+}
+
+/// Detect from files only (no subprocess). Only the binary at /usr/bin/zfetch
+/// can be package-managed; anything else (shadowed, ~/.local, target/) is portable.
+fn install_method() -> InstallMethod {
+    let exe = env::current_exe().and_then(fs::canonicalize);
+    let packaged = fs::canonicalize("/usr/bin/zfetch");
+    if !matches!((&exe, &packaged), (Ok(exe), Ok(packaged)) if exe == packaged) {
+        return InstallMethod::Portable;
+    }
+    if lists_binary(
+        Path::new("/var/lib/dpkg/info/zfetch.list"),
+        "/usr/bin/zfetch",
+    ) {
+        InstallMethod::Deb
+    } else if pacman_owns_binary(Path::new("/var/lib/pacman/local")) {
+        InstallMethod::Pacman
+    } else if crate::system::packages::rpm_database_present() {
+        // shortcut: rpmdb ownership is not parsed without the rpm tool, so a
+        // system binary on an RPM system is assumed RPM-managed; never auto-installed.
+        InstallMethod::Rpm
+    } else {
+        InstallMethod::Portable
+    }
+}
+
+fn manual_steps(method: InstallMethod, release: &Release) -> String {
+    let url = &release.html_url;
+    let version = release.tag_name.trim_start_matches('v');
+    let arch = env::consts::ARCH;
+    match method {
+        InstallMethod::Pacman => format!(
+            "Download zfetch-{version}-*-{arch}.pkg.tar.zst and its SHA256SUMS from {url}\n\
+             then run: sha256sum -c --ignore-missing SHA256SUMS* && sudo pacman -U ./zfetch-{version}-*.pkg.tar.zst"
+        ),
+        InstallMethod::Rpm => format!(
+            "Download zfetch-{version}-*.{arch}.rpm and its SHA256SUMS from {url}\n\
+             then run: sha256sum -c --ignore-missing SHA256SUMS* && sudo dnf install ./zfetch-{version}-*.{arch}.rpm"
+        ),
+        InstallMethod::Portable | InstallMethod::Deb => format!(
+            "Download the portable archive for {arch} and its SHA256SUMS from {url}\n\
+             verify it with: sha256sum -c --ignore-missing SHA256SUMS*\n\
+             then replace this binary yourself, or rebuild from source with: git pull && cargo build --profile compact"
+        ),
+    }
 }
 
 struct TemporaryDirectory(PathBuf);
@@ -272,7 +330,9 @@ pub fn run(check_only: bool) -> Result<(), String> {
     let remote_version = parse_version(&release.tag_name)
         .ok_or("latest release has an unsupported version format")?;
 
+    let method = install_method();
     println!("Current version : v{current}");
+    println!("Installed via   : {}", method.label());
     println!("Latest release  : {}", release.tag_name);
     println!("Release         : {}", release.html_url);
 
@@ -294,11 +354,13 @@ pub fn run(check_only: bool) -> Result<(), String> {
         return Ok(());
     }
 
-    if !installed_by_dpkg() {
-        return Err(format!(
-            "this zfetch executable is not managed by dpkg. Download and install manually from {}",
-            release.html_url
-        ));
+    if method != InstallMethod::Deb {
+        // Never overwrite files owned by another package manager.
+        println!(
+            "Automatic installation is only available for .deb installs. No files were changed."
+        );
+        println!("{}", manual_steps(method, &release));
+        return Ok(());
     }
 
     let arch = native_deb_arch().ok_or("automatic .deb update supports only x86_64 and aarch64")?;
@@ -374,7 +436,7 @@ mod tests {
     #[test]
     fn native_arch_is_supported_or_explicitly_rejected() {
         let actual = native_deb_arch();
-        assert!(matches!(actual, Some("amd64") | Some("arm64") | None));
+        assert!(matches!(actual, Some("amd64" | "arm64") | None));
     }
 
     #[test]
@@ -421,6 +483,48 @@ mod tests {
             release_status(&current, &Version(0, 2, 1)),
             ReleaseStatus::UpdateAvailable
         );
+    }
+
+    #[test]
+    fn install_method_file_checks() {
+        let dir = env::temp_dir().join(format!("zfetch-method-{}", process::id()));
+        let pkg = dir.join("zfetch-0.5.0-1");
+        fs::create_dir_all(&pkg).unwrap();
+        fs::create_dir_all(dir.join("zfetch-git-1-1")).unwrap();
+        assert!(!pacman_owns_binary(&dir));
+        fs::write(
+            pkg.join("files"),
+            "%FILES%\nusr/\nusr/bin/\nusr/bin/zfetch\n",
+        )
+        .unwrap();
+        assert!(pacman_owns_binary(&dir));
+        let list = dir.join("zfetch.list");
+        fs::write(&list, "/.\n/usr/bin/zfetch\n").unwrap();
+        assert!(lists_binary(&list, "/usr/bin/zfetch"));
+        assert!(!lists_binary(&dir.join("missing.list"), "/usr/bin/zfetch"));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn manual_steps_never_suggest_overwriting_package_files() {
+        let release = Release {
+            tag_name: "v0.5.0".into(),
+            html_url: format!("{RELEASE_URL_PREFIX}tag/v0.5.0"),
+            draft: false,
+            prerelease: false,
+            assets: vec![],
+        };
+        assert!(manual_steps(InstallMethod::Pacman, &release).contains("pacman -U"));
+        assert!(manual_steps(InstallMethod::Rpm, &release).contains("dnf install"));
+        assert!(manual_steps(InstallMethod::Portable, &release).contains("sha256sum -c"));
+    }
+
+    #[test]
+    fn parses_release_json_with_serde_json() {
+        let text = r#"{"tag_name":"v0.5.0","html_url":"https://github.com/azislamayuda/zfetch/releases/tag/v0.5.0","draft":false,"prerelease":false,"assets":[{"name":"SHA256SUMS","browser_download_url":"x","size":1}],"extra":1}"#;
+        let release: Release = serde_json::from_str(text).unwrap();
+        assert_eq!(release.tag_name, "v0.5.0");
+        assert_eq!(release.assets.len(), 1);
     }
 
     #[test]

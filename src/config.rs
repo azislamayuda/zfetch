@@ -106,35 +106,40 @@ pub struct ModulesConfig {
     pub hardware: Vec<String>,
 }
 
+/// The single list of module names; order is the default display order.
+pub const SYSTEM_MODULES: &[&str] = &[
+    "os", "kernel", "arch", "shell", "de", "session", "wm", "terminal", "packages",
+];
+
+pub const HARDWARE_MODULES: &[&str] = &[
+    "host", "bios", "display", "cpu", "gpu", "memory", "swap", "disk", "local_ip", "battery",
+    "uptime",
+];
+
 impl Default for ModulesConfig {
     fn default() -> Self {
         Self {
-            system: vec![
-                "os", "kernel", "arch", "shell", "de", "session", "wm", "terminal", "packages",
-            ]
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
-
-            hardware: vec![
-                "host", "bios", "display", "cpu", "gpu", "memory", "swap", "disk", "local_ip",
-                "battery", "uptime",
-            ]
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
+            system: SYSTEM_MODULES
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect(),
+            hardware: HARDWARE_MODULES
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect(),
         }
     }
 }
 
-const SYSTEM_MODULES: &[&str] = &[
-    "os", "kernel", "arch", "shell", "de", "session", "wm", "terminal", "packages",
-];
-
-const HARDWARE_MODULES: &[&str] = &[
-    "host", "bios", "display", "cpu", "gpu", "memory", "swap", "disk", "local_ip", "battery",
-    "uptime",
-];
+impl ModulesConfig {
+    /// Module names are unique across both groups, so one lookup covers both.
+    pub fn enabled(&self, name: &str) -> bool {
+        self.system
+            .iter()
+            .chain(&self.hardware)
+            .any(|item| item == name)
+    }
+}
 
 fn validate_modules(group: &str, modules: &[String], supported: &[&str]) -> Result<(), String> {
     let mut seen = HashSet::new();
@@ -152,7 +157,7 @@ fn validate_modules(group: &str, modules: &[String], supported: &[&str]) -> Resu
     Ok(())
 }
 
-fn default_config_path() -> Option<PathBuf> {
+pub fn default_config_path() -> Option<PathBuf> {
     if let Some(xdg) = env::var_os("XDG_CONFIG_HOME") {
         return Some(PathBuf::from(xdg).join("zfetch/config.jsonc"));
     }
@@ -249,7 +254,7 @@ mod tests {
         assert!(config.theme.color);
         assert!(!config.display.show_efi);
         assert!(config.display.show_percentage);
-        assert!(!config.modules.hardware.is_empty());
+        assert_ne!(config.modules.hardware, [] as [std::string::String; 0]);
     }
 
     #[test]

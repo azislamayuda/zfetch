@@ -1,0 +1,65 @@
+$ podman run --rm ubuntu:24.04: apt install ./zfetch_0.5.0-1_amd64.deb, then run zfetch
+Trying to pull docker.io/library/ubuntu:24.04...
+Getting image source signatures
+Copying blob sha256:7a48b8f0e5c73d0cc2a85b008978396aa19d253dc1b96fdb0b769ee6dcbeca4a
+Copying config sha256:d9b8c34d61a9b9a3c44cab883d7d2f2619d674966ab520186f799cf32e3e0377
+Writing manifest to image destination
+install exit=0
+zfetch 0.5.0
+
+Unknown@f014b6bf5cdd
+zfetch v0.5.0
+
+SYSTEM INFO ────────────────────────────
+OS          Ubuntu 24.04.5 LTS
+Kernel      7.0.0-43-generic
+Arch        x86_64
+Shell       Unknown
+DE          Unknown
+Session     Unknown
+WM          Unknown
+Terminal    Unknown
+Packages    114 (dpkg)
+
+HARDWARE INFO ────────────────────────────
+Host        Dell Inc. Latitude 3320
+BIOS        Dell Inc. 1.46.0 (08/25/2026)
+Display     1920x1080 @ 60 Hz [Built-in] (eDP-1)
+CPU         11th Gen Intel(R) Core(TM) i5-1145G7 @ 2.60GHz
+GPU         Intel GPU
+Memory      8.89 GiB / 14.86 GiB (60%)
+Swap        0.00 GiB / 15.63 GiB (0%)
+Disk        Unknown
+Local IP    <local-ip> (<iface>)
+Battery     63% (Charging)
+Uptime      0h 57m
+
+run exit=0
+zfetch doctor (read-only)
+[INFO] Config: ~/.config/zfetch/config.jsonc not found, using defaults
+[OK]   Logo: built-in, selected from os-release ID 'ubuntu'
+[OK]   os-release: present and parseable
+[OK]   /proc: accessible
+[OK]   /sys/class/power_supply: accessible
+[OK]   /sys/class/drm: accessible
+[OK]   Packages: dpkg
+[INFO] XDG_CURRENT_DESKTOP is not set (DE/session show Unknown)
+[INFO] XDG_SESSION_TYPE is not set (DE/session show Unknown)
+[INFO] gdctl: not found (only for display fallback when EDID is unreadable)
+[OK]   curl: found (--check-update / --update)
+{
+  "hardware": {
+    "battery": "63% (Charging)",
+/usr/bin/zfetch
+dpkg list owns /usr/bin/zfetch
+zfetch Update Manager
+Checking official GitHub Releases...
+Current version : v0.5.0
+Installed via   : .deb (dpkg)
+Latest release  : v0.4.0
+Release         : https://github.com/azislamayuda/zfetch/releases/tag/v0.4.0
+Your current build is newer than the latest public release.
+No update required.
+check-update exit=0
+Installed via   : portable or source build
+remove exit=0

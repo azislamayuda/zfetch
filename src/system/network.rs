@@ -120,7 +120,7 @@ fn native_local_ip() -> Option<String> {
 
     // SAFETY:
     // getifaddrs() receives a valid output pointer.
-    let result = unsafe { libc::getifaddrs(&mut head) };
+    let result = unsafe { libc::getifaddrs(&raw mut head) };
 
     if result != 0 {
         return None;

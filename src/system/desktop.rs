@@ -1,9 +1,8 @@
+use super::package_db;
 use std::{env, process::Command};
 
-use zbus::blocking::{Connection, Proxy};
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Desktop {
+pub(super) enum Desktop {
     Gnome,
     Plasma,
     Xfce,
@@ -24,7 +23,7 @@ impl Desktop {
 }
 
 // Recognize only exact desktop tokens. Avoid matching unrelated substrings.
-fn classify(value: &str) -> Option<Desktop> {
+pub(super) fn classify(value: &str) -> Option<Desktop> {
     value
         .split([':', ';', ','])
         .map(str::trim)
@@ -40,20 +39,6 @@ fn classify(value: &str) -> Option<Desktop> {
 
 fn desktop_from_values<'a>(values: impl IntoIterator<Item = &'a str>) -> Option<Desktop> {
     values.into_iter().find_map(classify)
-}
-
-// Existing GNOME D-Bus path remains preferred for version detection.
-fn gnome_dbus_version() -> Option<String> {
-    let connection = Connection::session().ok()?;
-    let proxy = Proxy::new(
-        &connection,
-        "org.gnome.Shell",
-        "/org/gnome/Shell",
-        "org.gnome.Shell",
-    )
-    .ok()?;
-    let version: String = proxy.get_property("ShellVersion").ok()?;
-    clean_version(&version)
 }
 
 fn clean_version(raw: &str) -> Option<String> {
@@ -84,7 +69,10 @@ fn command_version(command: &str) -> Option<String> {
 
 fn desktop_version(desktop: Desktop) -> Option<String> {
     match desktop {
-        Desktop::Gnome => gnome_dbus_version().or_else(|| command_version("gnome-shell")),
+        // dpkg status is a file read; the subprocess runs only on non-Debian systems.
+        Desktop::Gnome => {
+            package_db::installed_version("gnome-shell").or_else(|| command_version("gnome-shell"))
+        }
         Desktop::Plasma => command_version("plasmashell"),
         Desktop::Xfce => command_version("xfce4-session"),
         Desktop::Cinnamon => command_version("cinnamon"),

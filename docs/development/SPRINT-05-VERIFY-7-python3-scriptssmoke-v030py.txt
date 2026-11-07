@@ -1,0 +1,12 @@
+$ python3 scripts/smoke-v0.3.0.py target/compact/zfetch
+[PASS] Version v0.5.0
+[PASS] Help includes new options
+[PASS] Modules and themes
+[PASS] Compact/detailed layouts
+[PASS] JSON schema and --only output
+[PASS] JSON hardware output
+[PASS] Invalid option combinations are rejected
+[PASS] Config create/validate/no-overwrite
+[PASS] Custom logo and conflicting flags
+PASS: all offline Sprint 04 smoke checks passed.
+exit=0

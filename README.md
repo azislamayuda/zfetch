@@ -10,12 +10,22 @@ Designed as a lightweight alternative to Neofetch and Fastfetch, zfetch uses nat
 
 | Project | Details |
 | --- | --- |
-| Current source version | **v0.4.0** |
+| Current source version | **v0.5.0** |
 | Platform | **Linux** — native packages and portable builds |
 | CPU architectures | **x86_64 / amd64** and **aarch64 / arm64**, depending on format |
 | Language | **Rust (edition 2024)** |
 | License | **MIT** |
 | Author | [Azis Lamayuda](https://github.com/azislamayuda) |
+
+## What's new in v0.5.0
+
+- **`zfetch --doctor`:** read-only checklist (OK / WARN / INFO) for config, logo, os-release, `/proc` and `/sys` access, package databases, desktop session variables, and optional `gdctl` / `curl`.
+- **Privacy Mode 2.0:** `--privacy` now also hides MAC and IPv6 addresses, DMI serial numbers, and the username/hostname wherever they appear — in terminal output, JSON, `--export`, and `--doctor`. It is still not a guarantee of anonymity.
+- **Universal update manager:** `--check-update` reports how zfetch was installed (`.deb`, Arch package, RPM, or portable/source), detected from files only. `--update` installs only verified `.deb` updates after confirmation; other methods get safe manual commands and nothing is changed.
+- **More package managers:** Alpine APK, Gentoo Portage, and Void XBPS, read directly from their databases (no subprocesses).
+- **Window manager detection:** Hyprland, Sway, niri, and i3 via their IPC socket variables.
+- **`zfetch --benchmark`:** per-module detection time table.
+- **Smaller and lighter:** the `zbus` D-Bus dependency is gone. Displays are read from DRM/EDID in sysfs and the GNOME version from the package database: ~53% smaller binary, ~18% less peak RSS, no D-Bus connections on normal runs.
 
 ## What's new in v0.4.0
 
@@ -35,11 +45,11 @@ Designed as a lightweight alternative to Neofetch and Fastfetch, zfetch uses nat
 | System | Distribution, kernel, architecture, shell, DE, session, WM, terminal, packages |
 | Hardware | Host, BIOS, display, CPU, GPU, RAM, swap, disks, battery, uptime |
 | Network | Local IPv4 address and interface |
-| Package counts | DPKG, RPM, Pacman, Flatpak, Snap, and AppImage where detectable |
+| Package counts | DPKG, RPM, Pacman, APK, Portage, XBPS, Flatpak, Snap, and AppImage where detectable |
 | Terminal | Automatic distro ASCII logo, custom logo, ANSI colors, six themes, three layouts |
 | Customization | JSONC configuration, module filtering, module presets, hardware details |
 | Automation | Machine-readable JSON, private text/JSON report export |
-| Maintenance | On-demand GitHub release checking; interactive `.deb` updates on compatible systems |
+| Maintenance | On-demand GitHub release checking; interactive `.deb` updates; `--doctor` diagnostics; `--benchmark` timings |
 
 Hardware and desktop fields are detected on a best-effort basis. Some values require support from the kernel, drivers, desktop services, or package database.
 
@@ -154,7 +164,10 @@ zfetch --privacy                             # Redact selected personal informat
 zfetch --privacy --export report.txt         # Private text report
 zfetch --privacy --format json --export report.json
 zfetch --check-update                        # Check GitHub for a newer release
-zfetch --update                              # Offer compatible Debian package update
+zfetch --update                              # Verified .deb update, or manual steps for other installs
+zfetch --doctor                              # Read-only diagnostics
+zfetch --doctor --privacy                    # Diagnostics safe to paste into an issue
+zfetch --benchmark                           # Per-module detection time
 ```
 
 ### Common CLI options
@@ -175,9 +188,11 @@ zfetch --update                              # Offer compatible Debian package u
 | `--no-color` | Disable terminal colors |
 | `--config <FILE>` | Read a custom JSONC config |
 | `--init-config` / `--validate-config` | Create/validate configuration |
-| `--privacy` | Redact selected sensitive system data |
+| `--privacy` | Redact identity, IP/MAC addresses, serials, and personal mount paths |
 | `--export <FILE>` | Export to a new private file (no overwrite) |
-| `--check-update` / `--update` | On-demand release check / compatible Debian update |
+| `--check-update` / `--update` | On-demand release check / verified `.deb` update (manual steps elsewhere) |
+| `--doctor` | Read-only diagnostics; combine with `--privacy` and `--config` |
+| `--benchmark` | Per-module detection time table |
 
 Use `zfetch --help` for authoritative syntax. Some combinations are intentionally invalid, including `--only` with `--exclude`, `--logo` with `--no-logo`, and JSON output with presentation-only compact or detailed layouts.
 
@@ -194,7 +209,7 @@ Example JSON excerpt:
 ```json
 {
   "schema_version": 1,
-  "zfetch_version": "0.4.0",
+  "zfetch_version": "0.5.0",
   "identity": {
     "username": "hidden",
     "hostname": "hidden"
@@ -262,7 +277,7 @@ zfetch --check-update
 zfetch --update
 ```
 
-Release checks contact the official GitHub Releases API **only on request**. Normal `zfetch` runs do not perform update-network requests. The interactive `--update` installer currently handles compatible **Debian `.deb` installations** with user confirmation and checksum verification. For RPM, Arch, and portable installations, update using your distribution's package manager or replace the portable binary manually. Do not expect zfetch to convert one package format into another.
+Release checks contact the official GitHub Releases API **only on request**. Normal `zfetch` runs do not perform update-network requests. `--check-update` shows the detected installation method (`.deb`, Arch package, RPM, or portable/source), read from package-manager files without running any command. The interactive `--update` installer handles only **Debian `.deb` installations**, with explicit confirmation plus SHA-256, package name, version, and architecture verification. For Arch, RPM, and portable installs it prints the safe manual command (`pacman -U`, `dnf install`, or checksum-verified download) and changes nothing. zfetch never overwrites files owned by a package manager.
 
 ## Build, tests, and performance
 
@@ -277,7 +292,7 @@ cargo build --locked --profile compact
 ./target/compact/zfetch --version
 ```
 
-The v0.4.0 development build passed **80 Rust unit tests**, offline CLI smoke checks, and GitHub Actions builds for Debian, RPM, Arch, and static musl packaging. Performance depends on system load, enabled modules, kernel interfaces, and configuration. Prefer paired, repeatable benchmarks when comparing against other tools.
+The v0.5.0 development build passes **95 Rust unit tests and 3 integration tests** and the offline CLI smoke checks. The GitHub Actions packaging workflows (Debian, RPM, Arch, static musl) have not run on v0.5.0 yet. Performance depends on system load, enabled modules, kernel interfaces, and configuration. Prefer paired, repeatable benchmarks when comparing against other tools.
 
 ## Compatibility notes
 
@@ -285,7 +300,8 @@ The v0.4.0 development build passed **80 Rust unit tests**, offline CLI smoke ch
 - **RPM and GNU portable:** built against Rocky Linux 9 with GLIBC 2.34 target. GNU portable builds dynamically link to system libraries.
 - **Static musl:** no dynamic interpreter or required shared libraries in CI checks; a compatible CPU architecture and Linux kernel are still required.
 - **Arch package:** built for x86_64 using Arch Linux packaging tools. Package availability does not automatically imply support for every Arch derivative or older system snapshot.
-- **Runtime detection:** filesystem, `/proc`, `/sys`, D-Bus, drivers, and package databases differ by distro; unavailable fields may be omitted.
+- **Runtime detection:** filesystem, `/proc`, `/sys`, drivers, and package databases differ by distro; unavailable fields may be omitted. Displays come from DRM/EDID (preferred mode); `gdctl` is used only when no EDID is readable.
+- **Nix:** package counting is not supported. Profile generations do not map reliably to installed package counts.
 - **No AppImage release:** zfetch is a CLI tool. It can count existing AppImage files on supported layouts, but AppImage is not a distribution format provided by this release.
 
 ## Troubleshooting and removal

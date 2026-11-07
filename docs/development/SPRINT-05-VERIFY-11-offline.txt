@@ -1,0 +1,14 @@
+zfetch : connect=0 sendto=2 sockets=      1 socket(AF_NETLINK, SOCK_RAW|SOCK_CLOEXEC; execs=execve("/bin/bash" 
+zfetch --format json: connect=0 sendto=2 sockets=      1 socket(AF_NETLINK, SOCK_RAW|SOCK_CLOEXEC; execs=execve("/bin/bash" 
+zfetch --doctor: connect=0 sendto=0 sockets= execs=
+zfetch --benchmark: connect=0 sendto=2 sockets=      1 socket(AF_NETLINK, SOCK_RAW|SOCK_CLOEXEC; execs=execve("/bin/bash" 
+zfetch --hardware-details: connect=0 sendto=2 sockets=      1 socket(AF_NETLINK, SOCK_RAW|SOCK_CLOEXEC; execs=execve("/bin/bash" 
+# baseline v0.4.0 default:
+connect(15, {sa_family=AF_UNIX, sun_path="/run/user/1000/bus"}, 21) = 0
+connect(16, {sa_family=AF_UNIX, sun_path="/run/user/1000/bus"}, 21) = 0
+# unshare -rn (no network namespace)
+exit=0 lines=30
+DE          GNOME 50.1
+Display     1920x1080 @ 60 Hz [Built-in] (eDP-1)
+Local IP    Unknown
+NOTE: sendto=2 is the AF_NETLINK socket from getifaddrs() (kernel-local, no network); the code is unchanged from v0.4.0.

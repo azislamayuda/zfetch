@@ -1,0 +1,4 @@
+$ cargo clippy --locked --all-targets -- -D warnings
+    Checking zfetch v0.5.0 (<repo>)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.26s
+exit=0

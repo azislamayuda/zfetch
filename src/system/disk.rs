@@ -1,28 +1,18 @@
+use super::util::Usage;
 use std::{collections::HashSet, ffi::CString, fs, mem::MaybeUninit, process::Command};
 
 #[derive(Debug)]
 pub struct DiskInfo {
     pub mount_point: String,
     pub filesystem: String,
-    pub used: u64,
-    pub total: u64,
+    pub usage: Usage,
 }
 
 impl DiskInfo {
-    pub fn formatted(&self) -> String {
-        let gib = 1024.0 * 1024.0 * 1024.0;
-
-        let percent = if self.total > 0 {
-            self.used as f64 / self.total as f64 * 100.0
-        } else {
-            0.0
-        };
-
+    pub fn formatted(&self, with_percent: bool) -> String {
         format!(
-            "{:.2} GiB / {:.2} GiB ({:.0}%) - {} [{}]",
-            self.used as f64 / gib,
-            self.total as f64 / gib,
-            percent,
+            "{} - {} [{}]",
+            self.usage.formatted(with_percent),
             self.filesystem,
             self.mount_point
         )
@@ -186,8 +176,7 @@ fn native_disks() -> Vec<DiskInfo> {
         disks.push(DiskInfo {
             mount_point: mount.mount_point,
             filesystem: mount.filesystem,
-            used,
-            total,
+            usage: Usage { used, total },
         });
     }
 
@@ -258,8 +247,7 @@ fn df_fallback() -> Vec<DiskInfo> {
         disks.push(DiskInfo {
             mount_point,
             filesystem: filesystem.to_string(),
-            used,
-            total,
+            usage: Usage { used, total },
         });
     }
 
