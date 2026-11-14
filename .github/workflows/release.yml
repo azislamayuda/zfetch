@@ -1,7 +1,7 @@
 name: Release
 
 # One manual pipeline: build all nine packages, checksum them, and (only when
-# dry_run is false) create tag v<version> plus a DRAFT GitHub release.
+# dry_run is false) attest and sign them, then create tag v<version> plus a DRAFT GitHub release.
 # The owner reviews and publishes the draft by hand. Never triggered by push/tags.
 on:
   workflow_dispatch:
@@ -480,9 +480,69 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Provenance for the nine packages and a keyless Sigstore signature on SHA256SUMS.
+  # publish needs this job, so a failure here stops the run before any tag or draft.
+  # Sources read 2026-11-14: https://github.com/actions/attest (README, action.yml at v4),
+  # https://github.com/sigstore/cosign-installer (README, action.yml at v4.1.3).
+  attest:
+    name: Attest and sign release assets
+    needs: [validate, checksums]
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # OIDC token for Sigstore (attest and cosign)
+      attestations: write # store the attestation on GitHub
+      # Listed as required in the actions/attest README; keep until a real run shows it is unused.
+      artifact-metadata: write
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v8
+        with:
+          name: release-assets
+          path: release-assets
+
+      - name: Re-verify checksums
+        working-directory: release-assets
+        run: |
+          set -euo pipefail
+          sha256sum -c SHA256SUMS
+          test "$(find . -mindepth 1 -maxdepth 1 -name 'zfetch*' | wc -l)" -eq 9
+
+      - name: Attest build provenance (nine packages)
+        uses: actions/attest@v4
+        with:
+          subject-path: release-assets/zfetch*
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.3
+        with:
+          cosign-release: v3.1.4
+
+      - name: Sign SHA256SUMS (keyless) and verify the signature
+        working-directory: release-assets
+        env:
+          # shortcut: identity form not yet confirmed; confirm on first real run.
+          SIGNER: https://github.com/${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
+          cosign verify-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json \
+            --certificate-identity "$SIGNER" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+      - name: Upload signature bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-signature
+          path: release-assets/SHA256SUMS.sigstore.json
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
     name: Create tag and DRAFT release
-    needs: [validate, checksums]
+    needs: [validate, checksums, attest]
     if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -504,6 +564,12 @@ jobs:
           name: release-assets
           path: release-assets
 
+      - name: Download SHA256SUMS signature bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: release-signature
+          path: release-assets
+
       - name: Re-verify assets, notes and release state
         run: |
           set -euo pipefail
@@ -513,7 +579,8 @@ jobs:
             exit 1
           fi
           (cd release-assets && sha256sum -c SHA256SUMS)
-          test "$(find release-assets -mindepth 1 -maxdepth 1 | wc -l)" -eq 10
+          # Nine packages, SHA256SUMS, and its Sigstore bundle.
+          test "$(find release-assets -mindepth 1 -maxdepth 1 | wc -l)" -eq 11
           # This token has write access, so draft releases are visible here.
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::error::Release $TAG already exists (possibly as a draft)"
@@ -547,7 +614,7 @@ jobs:
 
   summary:
     name: Summary
-    needs: [validate, build-deb, build-rpm, build-musl, build-arch, checksums, publish]
+    needs: [validate, build-deb, build-rpm, build-musl, build-arch, checksums, attest, publish]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -562,6 +629,7 @@ jobs:
           R_MUSL: ${{ needs.build-musl.result }}
           R_ARCH: ${{ needs.build-arch.result }}
           R_SUMS: ${{ needs.checksums.result }}
+          R_ATTEST: ${{ needs.attest.result }}
           R_PUBLISH: ${{ needs.publish.result }}
           SUMS: ${{ needs.checksums.outputs.sums }}
           URL: ${{ needs.publish.outputs.url }}
@@ -582,6 +650,7 @@ jobs:
             echo "| build-musl | ${R_MUSL} |"
             echo "| build-arch | ${R_ARCH} |"
             echo "| checksums | ${R_SUMS} |"
+            echo "| attest | ${R_ATTEST} |"
             echo "| publish | ${R_PUBLISH} |"
             echo
             if [[ -n "$SUMS" ]]; then

@@ -97,3 +97,35 @@ fn benchmark_prints_module_table() {
     assert!(text.contains("memory") && text.contains("total"));
     fs::remove_dir_all(home.parent().unwrap()).unwrap();
 }
+
+#[test]
+fn snapshot_then_compare_reports_no_differences() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = workspace("snapshot");
+    let file = home.join("machine.json");
+    let file_arg = file.to_str().unwrap();
+
+    let saved = zfetch(&home, &["--snapshot", file_arg]);
+    assert!(saved.status.success(), "{saved:?}");
+    let mode = fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
+
+    let again = zfetch(&home, &["--snapshot", file_arg]);
+    assert_eq!(
+        again.status.code(),
+        Some(1),
+        "existing snapshot must not be overwritten"
+    );
+
+    let compared = zfetch(&home, &["--compare", file_arg]);
+    assert!(compared.status.success(), "{compared:?}");
+    let text = String::from_utf8_lossy(&compared.stdout);
+    assert!(text.contains("\n0 differences, "), "{text}");
+
+    let report = home.join("report.json");
+    fs::write(&report, br#"{"schema_version": 1}"#).unwrap();
+    let rejected = zfetch(&home, &["--compare", report.to_str().unwrap()]);
+    assert_eq!(rejected.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("not a snapshot"));
+    fs::remove_dir_all(home.parent().unwrap()).unwrap();
+}

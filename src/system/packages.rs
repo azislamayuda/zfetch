@@ -227,12 +227,29 @@ fn count_xbps_at(path: &Path) -> Option<usize> {
 }
 
 pub fn summary() -> String {
+    format_summary(&counts())
+}
+
+/// "2134 (dpkg), 12 (flatpak)", or "Unknown" when no manager was found.
+pub fn format_summary(counts: &[(&str, usize)]) -> String {
+    if counts.is_empty() {
+        return "Unknown".into();
+    }
+    counts
+        .iter()
+        .map(|(name, n)| format!("{n} ({name})"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Per-manager counts in display order; system managers are kept at zero, add-ons are not.
+pub fn counts() -> Vec<(&'static str, usize)> {
     let mut out = Vec::new();
-    let mut add = |name: &str, count: Option<usize>, include_zero: bool| {
+    let mut add = |name: &'static str, count: Option<usize>, include_zero: bool| {
         if let Some(n) = count
             && (include_zero || n > 0)
         {
-            out.push(format!("{n} ({name})"));
+            out.push((name, n));
         }
     };
     add("appimage", count_appimage(), false);
@@ -256,17 +273,58 @@ pub fn summary() -> String {
     add("xbps", count_xbps_at(Path::new("/var/db/xbps")), true);
     add("flatpak", count_flatpak(), false);
     add("snap", count_snap(), false);
-    if out.is_empty() {
-        "Unknown".into()
-    } else {
-        out.join(", ")
-    }
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    /// The v0.5.0 `summary()` body, kept verbatim as the byte-identity reference.
+    fn summary_v050(input: &[(&str, Option<usize>, bool)]) -> String {
+        let mut out = Vec::new();
+        let mut add = |name: &str, count: Option<usize>, include_zero: bool| {
+            if let Some(n) = count
+                && (include_zero || n > 0)
+            {
+                out.push(format!("{n} ({name})"));
+            }
+        };
+        for &(name, count, zero) in input {
+            add(name, count, zero);
+        }
+        if out.is_empty() {
+            "Unknown".into()
+        } else {
+            out.join(", ")
+        }
+    }
+
+    #[test]
+    fn split_counts_rebuild_identical_summary() {
+        let fixtures: [&[(&str, Option<usize>, bool)]; 4] = [
+            &[],
+            &[("dpkg", Some(2134), true), ("flatpak", Some(12), false)],
+            &[
+                ("appimage", Some(0), false),
+                ("dpkg", Some(0), true),
+                ("rpm", None, true),
+                ("snap", Some(3), false),
+            ],
+            &[("flatpak", Some(0), false), ("snap", None, false)],
+        ];
+        for input in fixtures {
+            let counts: Vec<(&str, usize)> = input
+                .iter()
+                .filter_map(|&(name, count, zero)| {
+                    count.filter(|&n| zero || n > 0).map(|n| (name, n))
+                })
+                .collect();
+            assert_eq!(format_summary(&counts), summary_v050(input));
+        }
+    }
+
     #[test]
     fn dpkg_counts_only_installed_records() {
         let fixture = b"Package: one\nStatus: install ok installed\n\nPackage: two\nStatus: deinstall ok config-files\n\nPackage: three\nStatus: install ok installed\n";

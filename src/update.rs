@@ -3,11 +3,17 @@
 
 use serde::Deserialize;
 use std::{
-    env, fs,
+    env,
+    ffi::CString,
+    fs,
     io::{self, Write},
-    os::unix::fs::DirBuilderExt,
+    os::unix::{
+        ffi::OsStrExt,
+        fs::{DirBuilderExt, PermissionsExt},
+    },
     path::{Path, PathBuf},
     process::{self, Command},
+    sync::OnceLock,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -294,23 +300,65 @@ fn manual_steps(method: InstallMethod, release: &Release) -> String {
 struct TemporaryDirectory(PathBuf);
 
 impl TemporaryDirectory {
-    fn new() -> Result<Self, String> {
+    /// Mode 0711: APT's `_apt` sandbox user can traverse to the known .deb name,
+    /// but cannot list the directory; only the owner can write to it.
+    fn new_in(base: &Path) -> Result<Self, String> {
         for attempt in 0..8 {
             let nanos = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_err(|error| error.to_string())?
                 .as_nanos();
-            let path =
-                env::temp_dir().join(format!("zfetch-update-{}-{nanos}-{attempt}", process::id()));
+            let path = base.join(format!("zfetch-update-{}-{nanos}-{attempt}", process::id()));
             let mut builder = fs::DirBuilder::new();
             builder.mode(0o700);
             match builder.create(&path) {
-                Ok(()) => return Ok(Self(path)),
+                Ok(()) => {
+                    let directory = Self(path);
+                    // DirBuilder::mode is filtered by the umask; set the final mode explicitly.
+                    fs::set_permissions(&directory.0, fs::Permissions::from_mode(0o711))
+                        .map_err(|error| format!("cannot set update directory mode: {error}"))?;
+                    return Ok(directory);
+                }
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
                 Err(error) => return Err(format!("cannot create update directory: {error}")),
             }
         }
         Err("could not create unique update directory".into())
+    }
+}
+
+/// The downloaded .deb, SHA256SUMS, then the directory; removed by the signal handler.
+static INTERRUPT_CLEANUP: OnceLock<[CString; 3]> = OnceLock::new();
+
+/// unlink/rmdir/_exit are async-signal-safe; each call simply fails on the wrong kind.
+fn remove_paths(paths: &[CString]) {
+    for path in paths {
+        unsafe {
+            libc::unlink(path.as_ptr());
+            libc::rmdir(path.as_ptr());
+        }
+    }
+}
+
+extern "C" fn on_interrupt(_: libc::c_int) {
+    if let Some(paths) = INTERRUPT_CLEANUP.get() {
+        remove_paths(paths);
+    }
+    unsafe { libc::_exit(130) };
+}
+
+/// Ctrl-C would otherwise kill the process without running `Drop` (and release
+/// builds use panic = "abort"). A caught signal resets to default in curl/apt after exec.
+fn remove_on_interrupt(files: [&Path; 2], directory: &Path) {
+    let c = |path: &Path| CString::new(path.as_os_str().as_bytes()).ok();
+    if let (Some(a), Some(b), Some(d)) = (c(files[0]), c(files[1]), c(directory))
+        && INTERRUPT_CLEANUP.set([a, b, d]).is_ok()
+    {
+        let handler = on_interrupt as extern "C" fn(libc::c_int) as libc::sighandler_t;
+        unsafe {
+            libc::signal(libc::SIGINT, handler);
+            libc::signal(libc::SIGTERM, handler);
+        }
     }
 }
 
@@ -383,13 +431,17 @@ pub fn run(check_only: bool) -> Result<(), String> {
         return Ok(());
     }
 
-    let workspace = TemporaryDirectory::new()?;
+    let workspace = TemporaryDirectory::new_in(&env::temp_dir())?;
     let deb_path = workspace.0.join(&deb.name);
     let sums_path = workspace.0.join("SHA256SUMS");
+    remove_on_interrupt([&deb_path, &sums_path], &workspace.0);
 
     println!("Downloading {}...", deb.name);
     curl_bytes(&deb.browser_download_url, Some(&deb_path))?;
     curl_bytes(&sums.browser_download_url, Some(&sums_path))?;
+    // curl honors the umask; `_apt` must be able to read the verified package.
+    fs::set_permissions(&deb_path, fs::Permissions::from_mode(0o644))
+        .map_err(|error| format!("cannot set package file mode: {error}"))?;
 
     let actual_size = fs::metadata(&deb_path)
         .map_err(|error| format!("missing downloaded package: {error}"))?
@@ -525,6 +577,76 @@ mod tests {
         let release: Release = serde_json::from_str(text).unwrap();
         assert_eq!(release.tag_name, "v0.5.0");
         assert_eq!(release.assets.len(), 1);
+    }
+
+    fn test_base(name: &str) -> PathBuf {
+        let base = env::temp_dir().join(format!("zfetch-test-{name}-{}", process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        base
+    }
+
+    #[test]
+    fn workspace_is_traversable_and_removed_on_drop() {
+        let base = test_base("workspace");
+        let workspace = TemporaryDirectory::new_in(&base).unwrap();
+        let mode = fs::metadata(&workspace.0).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o711);
+        let path = workspace.0.clone();
+        fs::write(path.join("zfetch.deb"), b"x").unwrap();
+        drop(workspace);
+        assert!(!path.exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn interrupt_cleanup_removes_files_then_directory() {
+        let base = test_base("interrupt");
+        let dir = base.join("work");
+        fs::create_dir(&dir).unwrap();
+        let (deb, sums) = (dir.join("a.deb"), dir.join("SHA256SUMS"));
+        fs::write(&deb, b"x").unwrap();
+        fs::write(&sums, b"y").unwrap();
+        let c = |p: &Path| CString::new(p.as_os_str().as_bytes()).unwrap();
+        remove_paths(&[c(&deb), c(&sums), c(&dir)]);
+        assert!(!dir.exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn unwritable_base_directory_is_an_error() {
+        // Root ignores directory modes, so the check only means something for other users.
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let base = test_base("readonly");
+        fs::set_permissions(&base, fs::Permissions::from_mode(0o500)).unwrap();
+        let result = TemporaryDirectory::new_in(&base);
+        fs::set_permissions(&base, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::remove_dir_all(base).unwrap();
+        assert!(result.is_err_and(|e| e.contains("cannot create update directory")));
+    }
+
+    #[test]
+    fn network_failure_is_reported() {
+        // Closed loopback port: fails fast with no internet access.
+        let error = curl_bytes("https://127.0.0.1:9/", None).unwrap_err();
+        assert!(error.contains("network request failed") || error.contains("cannot run curl"));
+    }
+
+    #[test]
+    fn checksum_mismatch_and_non_deb_are_rejected() {
+        let base = test_base("verify");
+        let file = base.join("zfetch_0.6.0-1_amd64.deb");
+        fs::write(&file, b"not a debian package\n").unwrap();
+        let error = verify_checksum(&file, &"0".repeat(64)).unwrap_err();
+        assert!(
+            error.contains("MISMATCH") || error.contains("sha256sum"),
+            "{error}"
+        );
+        // Without dpkg-deb (Arch, Rocky) this fails at launch, which is also a refusal.
+        assert!(verify_deb_package(&file, "0.6.0", "amd64").is_err());
+        fs::remove_dir_all(base).unwrap();
     }
 
     #[test]

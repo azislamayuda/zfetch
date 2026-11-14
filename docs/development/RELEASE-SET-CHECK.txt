@@ -1,0 +1,22 @@
+$ bash simulate.sh .github/workflows/release.yml <tmp>   (2026-11-08T03:24:33+07:00, locale LANG=en_US.UTF-8)
+Runs the real checksums step extracted from release.yml; local simulation, not a GitHub run.
+[OK] nine-files: expected pass, got pass (exit 0)
+    release set: 9 packages + 1 SHA256SUMS; debug present: 0
+[OK] nine-plus-debug: expected pass, got pass (exit 0)
+    ::notice::Excluded from release set: zfetch-debug-0.5.0-1-x86_64.pkg.tar.zst
+    release set: 9 packages + 1 SHA256SUMS; debug present: 0
+[OK] missing-rpm: expected fail, got fail (exit 1)
+    ::error::Release asset set differs from the expected nine files. Missing: zfetch-0.5.0-1.el9.aarch64.rpm Unexpected: 
+    summary: ### Missing (expected but not built)
+    summary: zfetch-0.5.0-1.el9.aarch64.rpm
+    summary: ### Unexpected (built but not in the release set)
+    summary: none
+[OK] extra-non-debug: expected fail, got fail (exit 1)
+    ::error::Release asset set differs from the expected nine files. Missing:  Unexpected: zfetch-0.5.0-x86_64.AppImage
+    summary: ### Missing (expected but not built)
+    summary: none
+    summary: ### Unexpected (built but not in the release set)
+    summary: zfetch-0.5.0-x86_64.AppImage
+[OK] checksum-mismatch: expected fail, got fail (exit 1)
+RESULT: all cases behave as expected
+exit=0

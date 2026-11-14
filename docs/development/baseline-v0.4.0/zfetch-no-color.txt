@@ -1,0 +1,31 @@
+
+                   lamayuda@lamayuda
+                   zfetch v0.4.0
+                   
+                   SYSTEM INFO ────────────────────────────
+                   OS          Ubuntu 26.04.1 LTS
+                   Kernel      7.0.0-43-generic
+                   Arch        x86_64
+                   Shell       bash 5.3.9
+                   DE          GNOME 50.1
+                   Session     Wayland
+                   WM          Mutter (Wayland)
+                   Terminal    Ptyxis 50.1
+ __  __       _    Packages    11 (appimage), 3823 (dpkg), 26 (flatpak)
+|  \/  |     | |   
+| |\/| |  _  | |   HARDWARE INFO ────────────────────────────
+| |  | | | |_| |   Host        Dell Inc. Latitude 3320
+|_|  |_|  \___/    BIOS        Dell Inc. 1.46.0 (08/25/2026)
+                   Display     1920x1080 @ 60 Hz [Built-in] (eDP-1)
+                   CPU         11th Gen Intel(R) Core(TM) i5-1145G7 @ 2.60GHz
+                   GPU         Intel Iris Xe Graphics
+                   Memory      8.07 GiB / 14.86 GiB (54%)
+                   Swap        0.00 GiB / 15.63 GiB (0%)
+                   Disk        184.99 GiB / 285.11 GiB (65%) - ext4 [/]
+                               0.03 GiB / 1.05 GiB (3%) - vfat [/boot/efi]
+                               368.80 GiB / 575.83 GiB (64%) - ext4 [/home]
+                               682.88 GiB / 997.22 GiB (68%) - ext4 [/home/lamayuda/ZDATA]
+                   Local IP    192.168.1.10/24 (wlp0s20f3)
+                   Battery     39% (Charging)
+                   Uptime      0h 27m
+

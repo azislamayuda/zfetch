@@ -1,0 +1,37 @@
+# Network and subprocess check, compact build (2026-11-14)
+
+$ strace -f -e trace=connect,sendto,execve zfetch --no-color
+connect/sendto calls: 2
+execve calls (1 = zfetch itself): 2
+execve("./target/compact/zfetch", ["./target/compact/zfetch", "--no-color"], 0x7ffe199e0fc0 /* 79 vars */) = 0
+execve("/bin/bash", ["/bin/bash", "--version"], 0x7ffe3767a300 /* 79 vars */) = 0
+sendto(3, [{nlmsg_len=20, nlmsg_type=RTM_GETLINK, nlmsg_flags=NLM_F_REQUEST|NLM_F_DUMP, nlmsg_seq=1794650566, nlmsg_pid=
+sendto(3, [{nlmsg_len=20, nlmsg_type=RTM_GETADDR, nlmsg_flags=NLM_F_REQUEST|NLM_F_DUMP, nlmsg_seq=1794650567, nlmsg_pid=
+
+$ strace -f -e trace=connect,sendto,execve zfetch --format json
+connect/sendto calls: 2
+execve calls (1 = zfetch itself): 2
+execve("./target/compact/zfetch", ["./target/compact/zfetch", "--format", "json"], 0x7ffe3e726d48 /* 79 vars */) = 0
+execve("/bin/bash", ["/bin/bash", "--version"], 0x7ffec1b1b8a8 /* 79 vars */ <unfinished ...>
+sendto(3, [{nlmsg_len=20, nlmsg_type=RTM_GETLINK, nlmsg_flags=NLM_F_REQUEST|NLM_F_DUMP, nlmsg_seq=1794650567, nlmsg_pid=
+sendto(3, [{nlmsg_len=20, nlmsg_type=RTM_GETADDR, nlmsg_flags=NLM_F_REQUEST|NLM_F_DUMP, nlmsg_seq=1794650568, nlmsg_pid=
+
+$ strace -f -e trace=connect,sendto,execve zfetch --snapshot <tmp>/st.json
+connect/sendto calls: 0
+execve calls (1 = zfetch itself): 2
+execve("./target/compact/zfetch", ["./target/compact/zfetch", "--snapshot", "/tmp/claude-1000/-home-<user>-"...], 0x7f
+execve("/bin/bash", ["/bin/bash", "--version"], 0x7ffe9ac9ea18 /* 79 vars */ <unfinished ...>
+
+$ strace -f -e trace=connect,sendto,execve zfetch --compare <tmp>/st.json
+connect/sendto calls: 0
+execve calls (1 = zfetch itself): 2
+execve("./target/compact/zfetch", ["./target/compact/zfetch", "--compare", "/tmp/claude-1000/-home-<user>-"...], 0x7ff
+execve("/bin/bash", ["/bin/bash", "--version"], 0x7ffdd5ac6408 /* 79 vars */) = 0
+
+# Same default run with the v0.5.0 binary, for reference
+connect/sendto calls: 2  execve calls: 2
+
+# Reading: the two sendto calls are NETLINK requests to the local kernel (RTM_GETLINK,
+# RTM_GETADDR) for the local IP module, the same as v0.5.0. No connect() call, no
+# network traffic. The one extra execve is `bash --version` for the shell module,
+# also the same as v0.5.0. --snapshot and --compare skip local_ip, so they make none.

@@ -1,0 +1,96 @@
+# --snapshot / --compare end to end, compact build, temporary directory (2026-11-14)
+
+$ zfetch --snapshot snap.json
+Snapshot saved: snap.json
+exit=0
+
+$ stat -c '%a %F' snap.json
+600 regular file
+
+$ sha256sum snap.json (before)
+9451867583d4ecc0
+
+$ zfetch --snapshot snap.json
+zfetch snapshot: Cannot create new report snap.json: File exists (os error 17)
+exit=1
+
+$ sha256sum snap.json (after the refused overwrite)
+9451867583d4ecc0
+
+$ zfetch --snapshot link.json
+zfetch snapshot: Cannot create new report link.json: File exists (os error 17)
+exit=1
+
+$ zfetch --compare snap.json --no-color
+Comparing with snap.json (zfetch 0.6.0, created less than an hour ago)
+
+0 differences, 25 fields unchanged, 0 skipped.
+exit=0
+
+$ zfetch --compare snap.json --format json
+{
+  "added": [],
+  "changed": [],
+  "compare_schema_version": 1,
+  "not_compared_count": 0,
+  "removed": [],
+  "skipped": [],
+  "snapshot": {
+    "created_unix": 1794650557,
+    "privacy": false,
+    "zfetch_version": "0.6.0"
+  },
+  "unchanged_count": 25
+}
+exit=0
+
+$ zfetch --snapshot private.json --privacy
+Snapshot saved: private.json
+exit=0
+
+$ grep -c -e <user> -e <host> private.json
+0
+
+$ zfetch --compare private.json --no-color
+Comparing with private.json (zfetch 0.6.0, created less than an hour ago)
+
+skipped  identity.hostname                  redacted
+skipped  identity.username                  redacted
+
+0 differences, 23 fields unchanged, 2 skipped.
+exit=0
+
+$ zfetch --compare link.json
+zfetch compare: link.json is a symbolic link; refusing to read it
+exit=1
+
+$ zfetch --compare report.json
+zfetch compare: report.json is a --format json report, not a snapshot; create one with --snapshot
+exit=1
+
+$ zfetch --compare newer.json
+zfetch compare: newer.json was created by a newer zfetch (snapshot schema 2); this version reads up to 1
+exit=1
+
+$ zfetch --compare bad.json
+zfetch compare: bad.json is not valid JSON: key must be a string at line 1 column 2
+exit=1
+
+$ zfetch --compare big.json
+zfetch compare: big.json is larger than 1 MiB; not a zfetch snapshot
+exit=1
+
+$ zfetch --compare missing.json
+zfetch compare: cannot read missing.json: No such file or directory (os error 2)
+exit=1
+
+$ zfetch --snapshot a.json --compare snap.json
+zfetch: Only one action flag can be used at a time
+Try 'zfetch --help' for usage.
+exit=2
+
+$ zfetch --snapshot a.json --only os
+zfetch: --snapshot cannot be combined with display options
+Try 'zfetch --help' for usage.
+exit=2
+

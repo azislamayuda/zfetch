@@ -1,0 +1,59 @@
+{
+  "hardware": {
+    "battery": "39% (Charging)",
+    "bios": "Dell Inc. 1.46.0 (08/25/2026)",
+    "cpu": "11th Gen Intel(R) Core(TM) i5-1145G7 @ 2.60GHz",
+    "disk": [
+      {
+        "filesystem": "ext4",
+        "mount_point": "/",
+        "total_bytes": 306134138880,
+        "used_bytes": 198634897408
+      },
+      {
+        "filesystem": "vfat",
+        "mount_point": "/boot/efi",
+        "total_bytes": 1124999168,
+        "used_bytes": 37294080
+      },
+      {
+        "filesystem": "ext4",
+        "mount_point": "/home",
+        "total_bytes": 618295738368,
+        "used_bytes": 395999023104
+      },
+      {
+        "filesystem": "ext4",
+        "mount_point": "/home/lamayuda/ZDATA",
+        "total_bytes": 1070753497088,
+        "used_bytes": 733236207616
+      }
+    ],
+    "display": [
+      "1920x1080 @ 60 Hz [Built-in] (eDP-1)"
+    ],
+    "gpu": "Intel Corporation TigerLake-LP GT2 [Iris Xe Graphics]",
+    "host": "Dell Inc. Latitude 3320",
+    "local_ip": "192.168.1.10/24 (wlp0s20f3)",
+    "memory": "8.07 GiB / 14.86 GiB",
+    "swap": "0.00 GiB / 15.63 GiB (0%)",
+    "uptime": "0h 27m"
+  },
+  "identity": {
+    "hostname": "lamayuda",
+    "username": "lamayuda"
+  },
+  "schema_version": 1,
+  "system": {
+    "arch": "x86_64",
+    "de": "GNOME 50.1",
+    "kernel": "7.0.0-43-generic",
+    "os": "Ubuntu 26.04.1 LTS",
+    "packages": "11 (appimage), 3823 (dpkg), 26 (flatpak)",
+    "session": "Wayland",
+    "shell": "bash 5.3.9",
+    "terminal": "Ptyxis 50.1",
+    "wm": "Mutter (Wayland)"
+  },
+  "zfetch_version": "0.4.0"
+}

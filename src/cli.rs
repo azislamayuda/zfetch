@@ -65,6 +65,16 @@ pub enum Action {
         config: Option<PathBuf>,
     },
     Benchmark(Option<PathBuf>),
+    Snapshot {
+        path: PathBuf,
+        privacy: bool,
+    },
+    Compare {
+        path: PathBuf,
+        json: bool,
+        no_color: bool,
+        privacy: bool,
+    },
 }
 
 /// Flags that run one standalone action instead of the normal report.
@@ -81,6 +91,14 @@ const ACTION_FLAGS: [&str; 8] = [
 
 fn action_name(name: &str) -> Option<&'static str> {
     ACTION_FLAGS.iter().copied().find(|flag| *flag == name)
+}
+
+/// File arguments must be present and must not look like another flag.
+fn file_value(value: Option<String>, flag: &str) -> Result<PathBuf, String> {
+    match value {
+        Some(value) if !value.is_empty() && !value.starts_with("--") => Ok(PathBuf::from(value)),
+        _ => Err(format!("{flag} requires a non-empty file path")),
+    }
 }
 
 fn csv_modules(raw: &str, option: &str) -> Result<Vec<String>, String> {
@@ -104,6 +122,9 @@ fn parse_args<I: Iterator<Item = String>>(mut args: I) -> Result<Action, String>
     let mut special: Option<&'static str> = None;
     let mut special_count = 0usize;
     let mut ordinary_options = false;
+    // --format and --no-color are display options, but --compare accepts them.
+    let mut output_options = false;
+    let mut action_file: Option<PathBuf> = None;
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -113,9 +134,18 @@ fn parse_args<I: Iterator<Item = String>>(mut args: I) -> Result<Action, String>
                 special = Some(name);
                 special_count += 1;
             }
+            "--snapshot" | "--compare" => {
+                action_file = Some(file_value(args.next(), &arg)?);
+                special = Some(if arg == "--snapshot" {
+                    "snapshot"
+                } else {
+                    "compare"
+                });
+                special_count += 1;
+            }
             "--no-color" => {
                 options.no_color = true;
-                ordinary_options = true;
+                output_options = true;
             }
             "--no-logo" => {
                 options.no_logo = true;
@@ -167,7 +197,7 @@ fn parse_args<I: Iterator<Item = String>>(mut args: I) -> Result<Action, String>
                     "json" => OutputFormat::Json,
                     _ => return Err(format!("Unsupported format: {value}")),
                 };
-                ordinary_options = true;
+                output_options = true;
             }
             "--only" => {
                 options.only = Some(csv_modules(
@@ -230,11 +260,14 @@ fn parse_args<I: Iterator<Item = String>>(mut args: I) -> Result<Action, String>
         return Err("Only one action flag can be used at a time".into());
     }
     if let Some(name) = special {
-        // --config is allowed for config-reading actions; --privacy only for --doctor.
+        // --config is allowed for config-reading actions; --privacy for --doctor and
+        // snapshots; --format/--no-color only for --compare.
         let config_ok = matches!(name, "validate-config" | "doctor" | "benchmark");
+        let privacy_ok = matches!(name, "doctor" | "snapshot" | "compare");
         if ordinary_options
+            || (output_options && name != "compare")
             || (options.config.is_some() && !config_ok)
-            || (options.privacy && name != "doctor")
+            || (options.privacy && !privacy_ok)
         {
             return Err(format!("--{name} cannot be combined with display options"));
         }
@@ -250,6 +283,16 @@ fn parse_args<I: Iterator<Item = String>>(mut args: I) -> Result<Action, String>
                 config: options.config,
             },
             "benchmark" => Action::Benchmark(options.config),
+            "snapshot" => Action::Snapshot {
+                path: action_file.unwrap_or_default(),
+                privacy: options.privacy,
+            },
+            "compare" => Action::Compare {
+                path: action_file.unwrap_or_default(),
+                json: options.format == OutputFormat::Json,
+                no_color: options.no_color,
+                privacy: options.privacy,
+            },
             _ => unreachable!(),
         });
     }
@@ -287,6 +330,8 @@ Options:
       --hardware-details  Append CPU core/thread details
       --privacy           Hide identity, IP/MAC addresses, serials and personal mount paths
       --export <FILE>     Create a new report (.txt or use --format json)
+      --snapshot <FILE>   Save a new machine snapshot (JSON, 0600, no overwrite)
+      --compare <FILE>    Show what changed since a snapshot (--format json too)
       --init-config       Create an example config without overwrite
       --validate-config   Validate JSONC configuration
       --doctor            Read-only diagnostics (combine with --privacy to redact)
@@ -380,6 +425,48 @@ mod tests {
         assert!(parse(&["--doctor", "--no-logo"]).is_err());
         assert!(parse(&["--benchmark", "--privacy"]).is_err());
         assert!(parse(&["--doctor", "--benchmark"]).is_err());
+    }
+
+    #[test]
+    fn snapshot_and_compare_parsing() {
+        assert!(matches!(
+            parse(&["--snapshot", "s.json", "--privacy"]),
+            Ok(Action::Snapshot { privacy: true, .. })
+        ));
+        assert!(matches!(
+            parse(&[
+                "--compare",
+                "s.json",
+                "--format",
+                "json",
+                "--no-color",
+                "--privacy"
+            ]),
+            Ok(Action::Compare {
+                json: true,
+                no_color: true,
+                privacy: true,
+                ..
+            })
+        ));
+        for rejected in [
+            &["--snapshot"][..],
+            &["--snapshot", ""],
+            &["--snapshot", "--privacy"],
+            &["--snapshot", "s.json", "--format", "json"],
+            &["--snapshot", "s.json", "--no-color"],
+            &["--snapshot", "s.json", "--config", "c.jsonc"],
+            &["--snapshot", "s.json", "--only", "os"],
+            &["--compare", "s.json", "--export", "out.txt"],
+            &["--compare", "s.json", "--only", "os"],
+            &["--compare", "s.json", "--config", "c.jsonc"],
+            &["--snapshot", "a.json", "--compare", "b.json"],
+            &["--compare", "s.json", "--doctor"],
+            &["--doctor", "--format", "json"],
+            &["--doctor", "--no-color"],
+        ] {
+            assert!(parse(rejected).is_err(), "{rejected:?}");
+        }
     }
 
     #[test]

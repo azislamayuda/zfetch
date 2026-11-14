@@ -10,12 +10,19 @@ Designed as a lightweight alternative to Neofetch and Fastfetch, zfetch uses nat
 
 | Project | Details |
 | --- | --- |
-| Current source version | **v0.5.0** |
+| Current source version | **v0.6.0** (draft, not released) |
 | Platform | **Linux** — native packages and portable builds |
 | CPU architectures | **x86_64 / amd64** and **aarch64 / arm64**, depending on format |
 | Language | **Rust (edition 2024)** |
 | License | **MIT** |
 | Author | [Azis Lamayuda](https://github.com/azislamayuda) |
+
+## What's new in v0.6.0 (draft)
+
+- **`zfetch --snapshot <FILE>`:** save the stable configuration of this machine (OS, kernel, desktop, package counts, hardware models, capacities) to a new JSON file with `0600` permissions. Values that change every run (used memory and disk, uptime, local IP, battery level) are not stored. Combine with `--privacy` for a shareable snapshot.
+- **`zfetch --compare <FILE>`:** show what changed since a snapshot: changed, added, and removed fields, matched by name. Add `--format json` for a machine-readable diff. The exit code is 0 whether or not there are differences.
+- **`--update` APT notice fixed:** the download directory can now be read by APT's `_apt` sandbox user, so the "Download is performed unsandboxed as root" notice no longer appears. Ctrl-C during an update now removes the downloaded files.
+- **Signed releases:** release packages get GitHub build provenance, and `SHA256SUMS` gets a keyless Sigstore signature (`SHA256SUMS.sigstore.json`).
 
 ## What's new in v0.5.0
 
@@ -90,6 +97,8 @@ sha256sum -c --ignore-missing SHA256SUMS
 ```
 
 This verifies matching local files against the published checksums; verify that the expected package actually reports `OK`. SHA-256 checksums alone do not replace publisher-signature verification.
+
+From v0.6.0, releases also carry build provenance and a signature on `SHA256SUMS`. The exact verification commands are in [docs/CLI-v0.6.0.md](docs/CLI-v0.6.0.md#verifying-a-release); they are not confirmed until the first signed release has been published.
 
 ## Installation
 
@@ -168,6 +177,9 @@ zfetch --update                              # Verified .deb update, or manual s
 zfetch --doctor                              # Read-only diagnostics
 zfetch --doctor --privacy                    # Diagnostics safe to paste into an issue
 zfetch --benchmark                           # Per-module detection time
+zfetch --snapshot before.json                # Save a machine snapshot (no overwrite)
+zfetch --compare before.json                 # Show what changed since the snapshot
+zfetch --compare before.json --format json   # Same, as JSON
 ```
 
 ### Common CLI options
@@ -193,6 +205,8 @@ zfetch --benchmark                           # Per-module detection time
 | `--check-update` / `--update` | On-demand release check / verified `.deb` update (manual steps elsewhere) |
 | `--doctor` | Read-only diagnostics; combine with `--privacy` and `--config` |
 | `--benchmark` | Per-module detection time table |
+| `--snapshot <FILE>` | Save a new machine snapshot (JSON, `0600`, no overwrite); accepts `--privacy` |
+| `--compare <FILE>` | Compare with a snapshot; accepts `--format json`, `--no-color`, `--privacy` |
 
 Use `zfetch --help` for authoritative syntax. Some combinations are intentionally invalid, including `--only` with `--exclude`, `--logo` with `--no-logo`, and JSON output with presentation-only compact or detailed layouts.
 
@@ -292,7 +306,7 @@ cargo build --locked --profile compact
 ./target/compact/zfetch --version
 ```
 
-The v0.5.0 development build passes **95 Rust unit tests and 3 integration tests** and the offline CLI smoke checks. The GitHub Actions packaging workflows (Debian, RPM, Arch, static musl) have not run on v0.5.0 yet. Performance depends on system load, enabled modules, kernel interfaces, and configuration. Prefer paired, repeatable benchmarks when comparing against other tools.
+The v0.6.0 development build passes **109 Rust unit tests and 4 integration tests** and the offline CLI smoke checks. The Release workflow with the new `attest` job has not run on GitHub yet. Performance depends on system load, enabled modules, kernel interfaces, and configuration. Prefer paired, repeatable benchmarks when comparing against other tools.
 
 ## Compatibility notes
 

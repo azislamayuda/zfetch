@@ -1,0 +1,16 @@
+# zfetch v0.6.0 output vs v0.5.0 (run 2026-11-14 on the development machine)
+# Username and hostname replaced with <user>/<host>.
+
+$ diff <(zfetch-0.5.0 --no-color) <(zfetch-0.6.0 --no-color)
+3c3
+<                    zfetch v0.5.0
+---
+>                    zfetch v0.6.0
+(only lines above differ)
+
+$ JSON: v0.5.0 vs v0.6.0, ignoring zfetch_version, uptime, and used memory/swap/disk
+schema_version: 1 -> 1
+zfetch_version: 0.5.0 -> 0.6.0
+top-level keys equal: True | hardware keys equal: True | system keys equal: True
+remaining content identical: True
+packages byte-identical: True

@@ -5,6 +5,7 @@ mod display;
 mod doctor;
 mod hardware_ext;
 mod report;
+mod snapshot;
 mod system;
 mod update;
 
@@ -58,6 +59,17 @@ fn run() -> Result<(), CliError> {
                 &system::benchmark_timings(),
                 start.elapsed().as_secs_f64() * 1000.0,
             );
+        }
+        cli::Action::Snapshot { path, privacy } => {
+            snapshot::save(&path, privacy).map_err(failure("zfetch snapshot"))?;
+        }
+        cli::Action::Compare {
+            path,
+            json,
+            no_color,
+            privacy,
+        } => {
+            snapshot::compare(&path, json, no_color, privacy).map_err(failure("zfetch compare"))?
         }
         cli::Action::Run(mut options) => {
             // Detailed layout explicitly opts into slower sysfs hardware queries.
